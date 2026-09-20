@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Env & secrets
+.env
+.env.local
+*.key
+
+# Data (raw/derived artifacts; keep structure via .gitkeep)
+data/db_raw/*.sqlite
+data/db_raw/*.zip
+data/docs_parsed/*
+!data/docs_parsed/.gitkeep
+
+# Caches
+*.sqlite-journal
+backend/var/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

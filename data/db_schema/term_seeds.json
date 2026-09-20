@@ -1,0 +1,50 @@
+[
+  {
+    "canonical": "Brazil",
+    "binding": "customer.country",
+    "aliases": ["巴西", "BRA"],
+    "description": "客户国家：巴西"
+  },
+  {
+    "canonical": "Canada",
+    "binding": "customer.country",
+    "aliases": ["加拿大", "枫叶国"],
+    "description": "客户国家：加拿大"
+  },
+  {
+    "canonical": "USA",
+    "binding": "customer.country",
+    "aliases": ["美国", "United States", "美帝"],
+    "description": "客户国家：美国"
+  },
+  {
+    "canonical": "France",
+    "binding": "customer.country",
+    "aliases": ["法国"],
+    "description": "客户国家：法国"
+  },
+  {
+    "canonical": "Rock",
+    "binding": "genre.name",
+    "aliases": ["摇滚", "摇滚乐"],
+    "description": "曲风：摇滚"
+  },
+  {
+    "canonical": "Jazz",
+    "binding": "genre.name",
+    "aliases": ["爵士", "爵士乐"],
+    "description": "曲风：爵士"
+  },
+  {
+    "canonical": "MPEG audio file",
+    "binding": "mediatype.name",
+    "aliases": ["mp3", "MP3", "MPEG"],
+    "description": "媒体格式：MPEG 音频文件"
+  },
+  {
+    "canonical": "Protected AAC audio file",
+    "binding": "mediatype.name",
+    "aliases": ["AAC", "aac"],
+    "description": "媒体格式：受保护的 AAC 音频"
+  }
+]

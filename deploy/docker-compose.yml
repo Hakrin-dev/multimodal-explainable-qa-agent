@@ -1,0 +1,67 @@
+services:
+  db:
+    # DOCKER_REGISTRY_MIRROR (e.g. docker.m.daocloud.io) set in .env for CN networks
+    image: ${DOCKER_REGISTRY_MIRROR:-docker.io}/pgvector/pgvector:pg16
+    container_name: mqa-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chinook}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chinook123}
+      POSTGRES_DB: ${POSTGRES_DB:-chinook}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chinook} -d ${POSTGRES_DB:-chinook}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ../backend
+      args:
+        REGISTRY: ${DOCKER_REGISTRY_MIRROR:-docker.io}
+    container_name: mqa-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    # run as host uid so mounted dirs keep host ownership
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-chinook}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chinook123}
+      POSTGRES_DB: ${POSTGRES_DB:-chinook}
+      LLM_PROVIDER: ${LLM_PROVIDER:-mock}
+      LLM_MODEL: ${LLM_MODEL:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen-plus}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+      LLM_RESPONSE_CACHE: ${LLM_RESPONSE_CACHE:-1}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../backend:/app
+      - ../data:/app/data
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ../frontend
+      args:
+        REGISTRY: ${DOCKER_REGISTRY_MIRROR:-docker.io}
+    container_name: mqa-frontend
+    depends_on:
+      - backend
+    # bypass docker-entrypoint.d (its apk/ipv6 probes hang on restricted networks)
+    entrypoint: ["nginx"]
+    command: ["-g", "daemon off;"]
+    ports:
+      - "8090:80"
+
+volumes:
+  pgdata:

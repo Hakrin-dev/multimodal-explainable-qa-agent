@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/our-team/multimodal-qa-agent/trace/v0.1",
+  "title": "Trace Tree (one turn)",
+  "type": "object",
+  "required": ["trace_version", "turn_id", "question", "created_at", "root"],
+  "properties": {
+    "trace_version": { "const": "0.1" },
+    "turn_id": { "type": "string", "description": "root node id, unique per turn" },
+    "question": { "type": "string", "description": "the (possibly rewritten) user question" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "session_id": { "type": "string" },
+    "root": { "$ref": "#/$defs/TraceNode" }
+  },
+  "$defs": {
+    "TraceNode": {
+      "type": "object",
+      "required": ["id", "type", "label", "status", "latency_ms"],
+      "properties": {
+        "id": { "type": "string" },
+        "parent_id": { "type": ["string", "null"] },
+        "type": {
+          "enum": ["turn", "intent", "plan", "tool_call", "llm_call", "fuse", "clarify", "step"],
+          "description": "turn=root; step=generic pipeline step (rewrite/validate/...)"
+        },
+        "label": {
+          "type": "string",
+          "description": "human readable, e.g. 'nl2sql', 'sql_validate', 'rag_search', 'rewrite'"
+        },
+        "input": { "description": "arbitrary JSON: question/sql/query/etc." },
+        "output": { "description": "arbitrary JSON: rows/sql/chunks/answer/etc." },
+        "latency_ms": { "type": "integer", "minimum": 0 },
+        "status": { "enum": ["pending", "ok", "error", "degraded", "skipped"] },
+        "detail": {
+          "type": "object",
+          "description": "structured payload; common keys documented in trace.md"
+        },
+        "started_at": { "type": "string", "format": "date-time" },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/TraceNode" } }
+      }
+    }
+  }
+}
