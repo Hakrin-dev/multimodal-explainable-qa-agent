@@ -46,8 +46,32 @@ turn (root: question)
 
 ## 4. 传输与持久化
 
-- API：`GET /api/trace/{turn_id}` 返回完整树 JSON（`to_dict()`）；SSE 过程中按节点推送 `trace.node` 事件（W2 定稿）
-- 持久化：W2 落 PG 表（`trace_event`，一行一节点 = `flat_events()` 的形态），本周先内存 + JSONL 落盘
+### 4.1 HTTP 拉取
+
+- `GET /api/trace/{turn_id}` 返回完整树 JSON（`to_dict()`）
+
+### 4.2 SSE 过程推送（W2 `/api/chat` 事件流，前端实时渲染）
+
+后端在流式生成过程中按发生顺序推送以下事件（`event:` / `data:` 两行格式）：
+
+| event | data | 时机 |
+|---|---|---|
+| `turn.start` | `{turn_id, question, rewritten}` | 改写完成后开始处理 |
+| `trace.node` | `TraceNode`（flat 形态，含 `id`/`parent_id`） | 每个节点完成（含 status/error） |
+| `answer.delta` | `{"text": "增量文本"}` | 最终答案流式生成中 |
+| `answer.done` | `{summary, sql, columns, rows, chart_hint, citations[], status}` | 答案完成，携结构化结果 |
+| `clarify.request` | `{missing_slots[], options{}}` | 需要澄清，前端展示选项按钮 |
+| `turn.end` | `{turn_id, latency_ms, cost_rmb, trace_url}` | 本轮结束 |
+| `error` | `{message, node_id?}` | 不可恢复错误 |
+
+约束：
+- `trace.node` 的 `parent_id` 允许前向引用（父节点事件先到，后端保证顺序）；
+- 断线重连：前端凭 `turn_id` 调 4.1 拉全量树，不重放 SSE；
+- 所有事件 data 均为单行 JSON（换行转义）。
+
+### 4.3 持久化
+
+- W2 落 PG 表（`trace_event`，一行一节点 = `flat_events()` 的形态），本周先内存 + JSONL 落盘 `var/traces/`
 
 ## 5. 示例
 
@@ -77,3 +101,5 @@ turn (root: question)
 | 版本 | 日期 | 变更 | 状态 |
 |---|---|---|---|
 | 0.1 | 2026-09-21 | A 起草初稿 | 待 B/C 评审 → 周五冻结 |
+| 0.1+ | 2026-09-22 | 补充 §4.2 SSE 事件格式初稿（7 类事件，供 C 前端 W2 开发） | 待评审 |
+| 0.2 | （周五） | B/C 评审意见合并后冻结 | 待定 |

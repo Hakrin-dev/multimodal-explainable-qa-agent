@@ -38,6 +38,13 @@ CANNED = [
     "所有发票总金额为 2328.6。",
     "SELECT genreid, COUNT(*) FROM track GROUP BY genreid ORDER BY COUNT(*) DESC, genreid",
     "各曲风曲目数已列出。",
+    # --- multi-table baseline (W3 #5 ablation: join-path injection vs this) ---
+    "SELECT a.name, COUNT(*) FROM artist a JOIN album al ON al.artistid = a.artistid GROUP BY a.name ORDER BY COUNT(*) DESC, a.name LIMIT 10",
+    "专辑数最多的 10 位艺术家已列出。",
+    "SELECT t.name, SUM(il.quantity) FROM track t JOIN invoiceline il ON il.trackid = t.trackid GROUP BY t.name ORDER BY SUM(il.quantity) DESC, t.name LIMIT 10",
+    "销量前 10 曲目已列出。",
+    "SELECT e.firstname, e.lastname, SUM(i.total) FROM employee e JOIN customer c ON c.supportrepid = e.employeeid JOIN invoice i ON i.customerid = c.customerid GROUP BY e.employeeid, e.firstname, e.lastname ORDER BY SUM(i.total) DESC, e.lastname",
+    "销售支持业绩已列出。",
 ]
 
 
@@ -48,7 +55,10 @@ def main() -> None:
         scripted.append(f"【分析】generated for case\n【SQL】\n```sql\n{gen_sql}\n```")
         scripted.append(summary)
     svc.register_mock(MockProvider(scripted=scripted))
-    sys.argv = ["run_nl2sql"]
+    sys.argv = ["run_nl2sql", "--cases",
+                str(BACKEND / "eval/cases/nl2sql_single_table.jsonl"),
+                str(BACKEND / "eval/cases/nl2sql_multi_table.jsonl"),
+                "--only-ids", "st-001,st-002,st-003,st-004,st-005,st-006,st-007,st-008,st-009,st-010,mt-001,mt-002,mt-017"]
     from eval.run_nl2sql import main as run_eval
     run_eval()
 

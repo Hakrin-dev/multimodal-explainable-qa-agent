@@ -64,7 +64,7 @@ echo "· /api/nl2sql smoke (mock provider):"
 echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print('  status =', d['status']); print('  sql    =', d['sql'] or '(mock: no SQL without API key)')"
 
 # scripted-mock eval over 10 cases — proves the full loop (no API key needed)
-echo "· scripted eval smoke (10 cases, mock provider):"
+echo "· scripted eval smoke (mock provider):"
 docker compose -f deploy/docker-compose.yml --env-file .env --project-name mqa \
   run --rm --no-deps backend python scripts/smoke_nl2sql.py 2>/dev/null | tail -4
 

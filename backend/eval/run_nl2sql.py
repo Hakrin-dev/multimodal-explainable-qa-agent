@@ -55,11 +55,21 @@ def result_match(a: list[tuple], b: list[tuple]) -> bool:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--cases", default=str(Path(__file__).parent / "cases/nl2sql_single_table.jsonl"))
+    ap.add_argument("--cases", nargs="+",
+                    default=[str(Path(__file__).parent / "cases/nl2sql_single_table.jsonl")])
+    ap.add_argument("--only-ids", default="",
+                    help="comma-separated case id filter (for L0 smoke subsets)")
     args = ap.parse_args()
 
     s = get_settings()
-    cases = [json.loads(l) for l in Path(args.cases).read_text(encoding="utf-8").splitlines() if l.strip()]
+    only = {x.strip() for x in args.only_ids.split(",") if x.strip()}
+    cases: list[dict] = []
+    for path in args.cases:
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                c = json.loads(line)
+                if not only or c["id"] in only:
+                    cases.append(c)
     print(f"provider={s.llm_provider} model={s.active_model} cases={len(cases)}\n")
 
     pipeline = NL2SQLPipeline()
@@ -88,6 +98,10 @@ def main() -> None:
             results.append({"id": case["id"], "passed": False, "first_pass": False,
                             "error": str(e)})
             print(f"  ✗ {case['id']}  EXCEPTION {e}")
+
+    if not results:
+        print("no cases matched — check --only-ids")
+        sys.exit(1)
 
     n = len(results)
     acc = sum(r["passed"] for r in results) / n

@@ -43,6 +43,26 @@
 - B：摄入中间表示契约（block/breadcrumb/formula 资产）待你起草后放 `docs/contracts/`
 - 双方：`backend/app/core/llm.py` 的 `LLMService.chat()` 是唯一 LLM 入口，RAG 引擎请直接复用（缓存与记账自动生效）
 
+## D2（9/22）· A 角色完成 ✅
+
+### 交付物
+
+| 项 | 状态 | 说明 |
+|---|---|---|
+| 多表用例集 20 个 | ✅ | `nl2sql_multi_table.jsonl`：2表×10 / 3表×5 / 4表×1 / 5表×1 / 自连接×1 / 嵌套子查询×3，覆盖 JOIN/GROUP/HAVING/NOT EXISTS/双 IN/派生表/日期；全部过预检（可执行、行数≤200、确定性、过校验器） |
+| 用例预检脚本 | ✅ | `eval/preflight_cases.py`（C 后续加用例必过此门；行数预算 200 = 执行准确率对比的生命线） |
+| D1 选型评测用例 | ✅ | `llm_selection_nl2sql.jsonl`（7 单表 + 3 JOIN，覆盖过滤/排序/聚合/LIKE/日期）；**RAG 5 例待 B 引擎就绪后补** |
+| Prompt 静态层定稿候选 | ✅ | `docs/contracts/prompt_static_layer.md` + `prompts/agent.py`（意图分类模板候选）；含冻结纪律（只追加不改序 + 版本号失效缓存） |
+| Trace SSE 事件格式初稿 | ✅ | trace.md §4.2：7 类事件（turn.start/trace.node/answer.delta/answer.done/clarify.request/turn.end/error），供 C 的 W2 前端开发 |
+| 多表基线冒烟 | ✅ | 脚本化 mock 13/13（含 mt-001/002/017）——**W3 #5 Join 路径注入消融实验的基线数据点** |
+
+### 用例设计过程中的数据事实（写入交接文档，避免 B/C 重复踩坑）
+
+- Chinook master 版发票日期范围 **2021-01-01 ~ 2025-12-22**（不是网上教程里的 2013）
+- **71 位艺术家无专辑**：问“每位艺术家专辑数”必须措辞“专辑最多的前 N 位”避免 JOIN/LEFT JOIN 歧义
+- 本版 Chinook playlisttrack 稀疏但 Heavy Metal Classic 有 26 首（含专辑信息）
+- 从未被购买的曲目 1519 首；Rock∩Jazz 双买客户 32 位（复杂嵌套用例的答案锚点）
+
 ## D2+（滚动更新）
 
-- 9/22: （待更新）
+- 9/23: （待更新）

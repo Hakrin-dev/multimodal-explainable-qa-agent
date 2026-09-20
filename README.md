@@ -26,7 +26,7 @@ backend/
     nl2sql/        问数流水线：改写(术语链接) → 生成 → sqlglot 校验 → 只读执行 → 自修复 → 总结
     agent/ rag/ …  W2 起填充（编排内核 / RAG 引擎）
   scripts/         Chinook SQLite→PG 转换导入 · 术语库抽取 · 冒烟
-  eval/            用例集(nl2sql 单表 10 例) · 跑分 runner · LLM 选型评测(D1)
+  eval/            用例集(单表 10 + 多表 20 + 选型 10) · 跑分 runner · 用例预检 · LLM 选型评测(D1)
   tests/           单测(27) + 集成测试(需 DB)
 frontend/          占位（W2: Vue 3 + TS + Vite + Naive UI）
 deploy/            docker-compose · quick_start.sh
