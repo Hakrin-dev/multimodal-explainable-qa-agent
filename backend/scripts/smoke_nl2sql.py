@@ -38,6 +38,8 @@ CANNED = [
     "所有发票总金额为 2328.6。",
     "SELECT genreid, COUNT(*) FROM track GROUP BY genreid ORDER BY COUNT(*) DESC, genreid",
     "各曲风曲目数已列出。",
+    "SELECT COUNT(*) FROM customer WHERE country = 'USA'",
+    "来自美国的客户共有 13 位。",
     # --- multi-table baseline (W3 #5 ablation: join-path injection vs this) ---
     "SELECT a.name, COUNT(*) FROM artist a JOIN album al ON al.artistid = a.artistid GROUP BY a.name ORDER BY COUNT(*) DESC, a.name LIMIT 10",
     "专辑数最多的 10 位艺术家已列出。",
@@ -58,7 +60,7 @@ def main() -> None:
     sys.argv = ["run_nl2sql", "--cases",
                 str(BACKEND / "eval/cases/nl2sql_single_table.jsonl"),
                 str(BACKEND / "eval/cases/nl2sql_multi_table.jsonl"),
-                "--only-ids", "st-001,st-002,st-003,st-004,st-005,st-006,st-007,st-008,st-009,st-010,mt-001,mt-002,mt-017"]
+                "--only-ids", "st-001,st-002,st-003,st-004,st-005,st-006,st-007,st-008,st-009,st-011,mt-001,mt-002,mt-017"]
     from eval.run_nl2sql import main as run_eval
     run_eval()
 

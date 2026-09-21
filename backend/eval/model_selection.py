@@ -45,12 +45,13 @@ def eval_provider(provider: str, cases: list[dict], repeats: int) -> dict:
         for case in cases:
             r = pipeline.run(case["question"])
             cand = [tuple(row) for row in r.rows[:200]]
-            ref = run_reference(case["reference_sql"])
+            ref, ref_cols = run_reference(case["reference_sql"])
+            passed = r.status == "ok" and result_match(cand, ref, r.columns, ref_cols)
             per_case.append({
-                "case": case["id"], "rep": rep,
-                "passed": r.status == "ok" and result_match(cand, ref),
-                "first_pass": r.status == "ok" and result_match(cand, ref) and r.repair_rounds == 0,
+                "case": case["id"], "rep": rep, "passed": passed,
+                "first_pass": passed and r.repair_rounds == 0,
                 "latency_ms": r.latency_ms, "repair_rounds": r.repair_rounds,
+                "sql": r.sql,
             })
     wall_s = time.monotonic() - t_start
 
@@ -113,10 +114,15 @@ def main() -> None:
               f"p50={res['p50_ms']}ms cost=¥{res['cost_rmb']}")
         results.append(res)
 
-    out = var_dir() / "eval" / f"model_selection_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+    stamp = dt.datetime.now().strftime('%Y%m%d_%H%M%S')
+    out = var_dir() / "eval" / f"model_selection_{stamp}.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(render_markdown(results), encoding="utf-8")
+    json_out = out.with_suffix(".json")
+    json_out.write_text(json.dumps(results, ensure_ascii=False, indent=2,
+                                   default=str), encoding="utf-8")
     print(f"\nreport: {out}")
+    print(f"detail: {json_out}")
 
 
 if __name__ == "__main__":

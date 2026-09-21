@@ -76,3 +76,20 @@ def test_with_cte(validator):
     sql = "WITH top AS (SELECT name FROM track) SELECT * FROM top"
     r = validator.validate(sql)
     assert r.ok, r.errors
+
+
+def test_limit_clamp_only_outermost(validator):
+    """Regression (W1-D2): clamping subqueries corrupted derived-table semantics."""
+    sql = ("SELECT t.name FROM track t WHERE t.unitprice > "
+           "(SELECT AVG(unitprice) FROM track)")
+    r = validator.validate(sql)
+    assert r.ok
+    assert r.sql.upper().count("LIMIT") == 1            # only the outer clamp
+    assert r.sql.upper().rstrip().endswith("LIMIT 50")  # and it's at the end
+
+    # nested derived table also untouched
+    sql2 = ("SELECT name FROM (SELECT name, SUM(unitprice) AS s FROM track GROUP BY name) sub "
+            "WHERE s > (SELECT AVG(s) FROM (SELECT SUM(milliseconds) AS s FROM track GROUP BY albumid) d)")
+    r2 = validator.validate(sql2)
+    assert r2.ok
+    assert r2.sql.upper().count("LIMIT 50") == 1

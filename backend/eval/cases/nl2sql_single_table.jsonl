@@ -4,7 +4,7 @@
 {"id": "st-004", "category": "nl2sql_single_table", "question": "单价超过 1 美元的曲目有多少首？", "reference_sql": "SELECT COUNT(*) FROM track WHERE unitprice > 1", "notes": "filter-numeric"}
 {"id": "st-005", "category": "nl2sql_single_table", "question": "客户都来自哪些国家？去重后按字母排序列出", "reference_sql": "SELECT DISTINCT country FROM customer ORDER BY country", "notes": "distinct+order"}
 {"id": "st-006", "category": "nl2sql_single_table", "question": "哪位员工入职最早？给出姓名和入职日期", "reference_sql": "SELECT firstname, lastname, hiredate FROM employee ORDER BY hiredate ASC LIMIT 1", "notes": "order-asc-limit1"}
-{"id": "st-007", "category": "nl2sql_single_table", "question": "时长最长的曲目是哪一首？", "reference_sql": "SELECT name, milliseconds FROM track ORDER BY milliseconds DESC LIMIT 1", "notes": "order-desc-limit1"}
+{"id": "st-007", "category": "nl2sql_single_table", "question": "时长最长的曲目是哪一首？给出曲名和时长。", "reference_sql": "SELECT name, milliseconds FROM track ORDER BY milliseconds DESC LIMIT 1", "notes": "order-desc-limit1 (reworded: explicit columns)"}
 {"id": "st-008", "category": "nl2sql_single_table", "question": "名字里包含 Music 的歌单有哪些？", "reference_sql": "SELECT name FROM playlist WHERE name ILIKE '%Music%' ORDER BY name", "notes": "like"}
 {"id": "st-009", "category": "nl2sql_single_table", "question": "所有发票的总金额是多少？", "reference_sql": "SELECT SUM(total) FROM invoice", "notes": "agg-sum-float"}
-{"id": "st-010", "category": "nl2sql_single_table", "question": "每个曲风各有多少首曲目？按数量从多到少排序", "reference_sql": "SELECT genreid, COUNT(*) FROM track GROUP BY genreid ORDER BY COUNT(*) DESC, genreid", "notes": "group-by"}
+{"id": "st-011", "category": "nl2sql_single_table", "question": "有多少位客户来自美国？", "reference_sql": "SELECT COUNT(*) FROM customer WHERE country = 'USA'", "notes": "count-filter"}

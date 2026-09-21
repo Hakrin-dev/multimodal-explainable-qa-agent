@@ -35,7 +35,7 @@ def _store_path(settings: Settings) -> Path:
 Role = Literal["system", "user", "assistant"]
 
 # Bump when prompt templates change -> invalidates stale cache entries.
-PROMPT_TEMPLATE_VERSION = "v0.1-w1"
+PROMPT_TEMPLATE_VERSION = "v0.2-w1-d2"
 
 
 # ---------------------------------------------------------------------------
@@ -118,10 +118,14 @@ class _LLMStore:
     # ---- cache ----
 
     @staticmethod
-    def cache_key(model: str, params: dict, messages: Sequence[Message]) -> str:
+    def cache_key(provider: str, model: str, params: dict,
+                  messages: Sequence[Message]) -> str:
+        """Provider IS part of the key: same model name across providers
+        (e.g. selection eval A/B) must never share cached responses."""
         payload = json.dumps(
             {
                 "template_version": PROMPT_TEMPLATE_VERSION,
+                "provider": provider,
                 "model": model,
                 "params": params,
                 "messages": list(messages),
@@ -344,7 +348,7 @@ class LLMService:
             use_cache = cacheable and self.settings.llm_response_cache
 
         if use_cache:
-            key = self.store.cache_key(model, params, messages)
+            key = self.store.cache_key(pname, model, params, messages)
             hit = self.store.cache_get(key)
             if hit is not None:
                 # ledger: record the free hit for reporting
@@ -360,7 +364,7 @@ class LLMService:
         resp = LLMResponse(content=content, model=model, provider=pname, usage=usage,
                            cost_rmb=cost, cache_hit=False, latency_ms=latency_ms)
         if use_cache:
-            key = self.store.cache_key(model, params, messages)
+            key = self.store.cache_key(pname, model, params, messages)
             self.store.cache_put(key, pname, model, messages, params, resp)
         self.store.log_usage(provider=pname, model=model, purpose=purpose, usage=usage,
                              cost_rmb=cost, app_cache_hit=False, latency_ms=latency_ms)

@@ -24,12 +24,12 @@ def test_mock_provider_scripted(tmp_path):
 def test_cache_key_stability_and_bump(tmp_path):
     msgs = [{"role": "user", "content": "销量前十"}]
     params = {"temperature": 0.0, "max_tokens": None, "response_json": False}
-    k1 = _LLMStore.cache_key("m1", params, msgs)
-    k2 = _LLMStore.cache_key("m1", params, msgs)
-    k3 = _LLMStore.cache_key("m2", params, msgs)  # different model -> different key
+    k1 = _LLMStore.cache_key("p", "m1", params, msgs)
+    k2 = _LLMStore.cache_key("p", "m1", params, msgs)
+    k3 = _LLMStore.cache_key("p", "m2", params, msgs)  # different model -> different key
     assert k1 == k2 != k3
     # message order/content is part of the key
-    k4 = _LLMStore.cache_key("m1", params, msgs + [{"role": "user", "content": "x"}])
+    k4 = _LLMStore.cache_key("p", "m1", params, msgs + [{"role": "user", "content": "x"}])
     assert k4 != k1
 
 
@@ -38,7 +38,7 @@ def test_cache_roundtrip_and_usage_ledger(tmp_path):
     msgs = [{"role": "user", "content": "q"}]
     params = {"temperature": 0.0}
 
-    key = store.cache_key("model-x", params, msgs)
+    key = store.cache_key("p", "model-x", params, msgs)
     assert store.cache_get(key) is None
 
     from app.core.llm import LLMResponse, Usage
@@ -81,5 +81,15 @@ def test_template_version_in_key(tmp_path):
     """Bumping PROMPT_TEMPLATE_VERSION must invalidate cache keys."""
     msgs = [{"role": "user", "content": "q"}]
     payload = {"v": PROMPT_TEMPLATE_VERSION, "m": "x", "msgs": msgs}
-    k1 = _LLMStore.cache_key("x", {}, msgs)
+    k1 = _LLMStore.cache_key("p", "x", {}, msgs)
     assert json.dumps(payload, sort_keys=True) not in k1  # implementation detail only
+
+
+def test_cache_key_separates_providers(tmp_path):
+    """Regression: same model name under different providers (selection A/B)
+    must NOT share cache entries — this corrupted the first provider probe."""
+    msgs = [{"role": "user", "content": "q"}]
+    params = {"temperature": 0.0}
+    deep = _LLMStore.cache_key("deepseek", "shared-model", params, msgs)
+    qwen = _LLMStore.cache_key("qwen", "shared-model", params, msgs)
+    assert deep != qwen

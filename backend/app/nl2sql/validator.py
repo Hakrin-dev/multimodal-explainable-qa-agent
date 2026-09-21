@@ -94,15 +94,32 @@ class SQLValidator:
     # -- helpers --
 
     def _clamp_limit(self, tree: exp.Expression) -> exp.Expression:
-        for select in tree.find_all(exp.Select):
-            if select.args.get("limit") is None:
-                select.limit(self.max_rows, copy=False)
-            else:
-                limit_expr = select.args["limit"].expression
-                try:
-                    n = int(limit_expr.this) if isinstance(limit_expr, exp.Literal) else None
-                except Exception:
-                    n = None
-                if n is None or n > self.max_rows:
-                    select.limit(self.max_rows, copy=False)
+        """Clamp ONLY the outermost SELECT's LIMIT.
+
+        Bug fix (W1-D2): clamping subquery/CTE selects corrupts semantics —
+        e.g. a derived-table average computed over 50 rows instead of all.
+        """
+        outer = tree
+        if isinstance(tree, (exp.Union, exp.Intersect, exp.Except)):
+            # set operations: clamp each arm's outermost select
+            for arm in tree.flatten():
+                if isinstance(arm, exp.Select):
+                    self._clamp_one(arm)
+            return tree
+        while outer.parent is not None:
+            outer = outer.parent
+        if isinstance(outer, exp.Select):
+            self._clamp_one(outer)
         return tree
+
+    def _clamp_one(self, select: exp.Select) -> None:
+        if select.args.get("limit") is None:
+            select.limit(self.max_rows, copy=False)
+        else:
+            limit_expr = select.args["limit"].expression
+            try:
+                n = int(limit_expr.this) if isinstance(limit_expr, exp.Literal) else None
+            except Exception:
+                n = None
+            if n is None or n > self.max_rows:
+                select.limit(self.max_rows, copy=False)
