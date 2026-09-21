@@ -11,6 +11,8 @@ venv/
 # Node
 node_modules/
 frontend/dist/
+.pnpm-store/
+*.tsbuildinfo
 
 # Env & secrets
 .env

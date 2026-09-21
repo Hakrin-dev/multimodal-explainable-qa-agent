@@ -10,7 +10,7 @@
 ```
 
 - 后端 API：`http://localhost:8000`（`/api/health`、`POST /api/nl2sql`、`/api/schema`、`/api/terms`、`/api/usage`）
-- 前端占位页：`http://localhost:8090`（W2 替换为 Vue 3 + Naive UI）
+- 前端：`http://localhost:8090`（Vue 3 + TypeScript + Naive UI；SSE 对话、数据卡片、引用与 Trace 双视图）
 - 数据库：`localhost:5433`（chinook/chinook123，库名 chinook）
 
 无需 LLM API key 即可启动：默认 `LLM_PROVIDER=mock`，全部流水线可用脚本化 mock 驱动。
@@ -30,7 +30,7 @@ backend/
   scripts/         Chinook 导入 · 术语库抽取 · 知识库 PDF 生成 · 文档摄入 · 双引擎冒烟
   eval/            用例集(单表 10 + 多表 20 + 选型 10 + RAG 6) · 双 runner · 用例预检
   tests/           41 个测试（单测 + 集成）
-frontend/          占位（W2: Vue 3 + TS + Vite + Naive UI）
+frontend/          Vue 3 前端：对话流 · 表格/图表 · 引用 · 澄清 · Trace 时间线/DAG
 deploy/            docker-compose · quick_start.sh
 data/              db_raw(Chinook SQLite) · db_schema(生成 DDL/术语种子) · docs_raw / docs_parsed / eval_cases
 docs/
@@ -44,6 +44,10 @@ cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m pytest tests/ -q                  # 27 passed（集成用例需先启动 DB）
 .venv/bin/python scripts/smoke_nl2sql.py              # mock 驱动 10 用例全流程
 .venv/bin/python eval/model_selection.py              # D1 选型评测（需 API key）
+
+cd frontend && pnpm install
+pnpm dev                                               # http://localhost:5173，/api 代理到 8000
+pnpm test && pnpm build
 ```
 
 注意：受限网络环境下 `deploy/docker-compose.yml` 使用 `DOCKER_REGISTRY_MIRROR`（.env 已配 `docker.m.daocloud.io`）拉取镜像。
