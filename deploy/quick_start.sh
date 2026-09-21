@@ -78,6 +78,14 @@ RESP=$(curl -s -X POST http://localhost:8000/api/nl2sql \
 echo "· /api/nl2sql smoke (mock provider):"
 echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print('  status =', d['status']); print('  sql    =', d['sql'] or '(mock: no SQL without API key)')"
 
+# orchestrated chat smoke (intent routing + trace tree)
+CHAT=$(curl -s -m 60 -X POST http://localhost:8000/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"question": "销量前十的曲目是哪些", "session_id": "quickstart"}')
+echo "· /api/chat smoke (orchestration):"
+echo "$CHAT" | python3 -c "import json,sys; d=json.load(sys.stdin); print('  intent =', d['intent'], '| status =', d['status']); print('  nodes  =', [c['label'] for c in d['trace']['root']['children']])" 2>/dev/null \
+  || echo '  (chat smoke unavailable)'
+
 # scripted-mock eval over NL2SQL cases — proves the full loop (no API key needed)
 echo "· scripted eval smoke (mock provider):"
 docker compose -f deploy/docker-compose.yml --env-file .env --project-name mqa \

@@ -142,6 +142,11 @@ PROJECT_DDL = [
     );
     """,
     "CREATE INDEX IF NOT EXISTS biz_term_alias_gin ON biz_term USING GIN (aliases);",
+    # ---- business knowledge lives in the DB, not in prompts (架构原则 1：知识外置).
+    # schema_meta.build_schema_context() reads these into the semi-static prompt layer.
+    """COMMENT ON TABLE track IS '曲目表。业务规则：统计销量/排名时，同名曲目（不同专辑/版本）视为同一首，必须按 name 聚合，禁止按 trackid 分组。';""",
+    """COMMENT ON TABLE invoiceline IS '订单明细表，销量(quantity)与销售额(unitprice*quantity)的事实来源。';""",
+    """COMMENT ON TABLE invoice IS '发票表，total 为含税总额；客户维度分析优先关联 customer 表而非 billing 字段。';""",
 ]
 
 

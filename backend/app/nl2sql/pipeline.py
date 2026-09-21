@@ -24,6 +24,38 @@ from .validator import SQLValidator
 
 MAX_REPAIR_ROUNDS = 3
 
+_CN_NUM = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6,
+           "七": 7, "八": 8, "九": 9, "十": 10}
+_TOPN_PATTERNS = [
+    re.compile(r"[前最]\s*([0-9]+|[一二两三四五六七八九十]+)\s*(个|名|首|位|条|张|家|款|大|的)"),
+    re.compile(r"[Tt]op\s*([0-9]+)"),
+]
+
+
+def _parse_cn_num(s: str) -> int | None:
+    if s.isdigit():
+        return int(s)
+    # 十/十X/X十/X十Y (≤99)
+    if s == "十":
+        return 10
+    if "十" in s:
+        left, _, right = s.partition("十")
+        tens = _CN_NUM.get(left, 1) if left else 1
+        ones = _CN_NUM.get(right, 0) if right else 0
+        return tens * 10 + ones
+    return _CN_NUM.get(s)
+
+
+def topn_requirement(question: str) -> int | None:
+    """Extract a Top-N requirement from the question (None if absent)."""
+    for pat in _TOPN_PATTERNS:
+        m = pat.search(question)
+        if m:
+            n = _parse_cn_num(m.group(1))
+            if n and 1 <= n <= 100:
+                return n
+    return None
+
 _SQL_FENCE = re.compile(r"```sql\s*(.+?)```", re.S | re.I)
 _SQL_NONE = re.compile(r"^\s*(none|null|无)\s*$", re.I)
 
@@ -79,6 +111,7 @@ class NL2SQLPipeline:
         # ③④⑤ generate / validate / execute with repair loop
         feedback: str | None = None
         last_sql = ""
+        top_n = topn_requirement(result.rewritten or question)
         for round_no in range(1, MAX_REPAIR_ROUNDS + 1):
             gen = self._generate(trace, schema_ctx, result.rewritten or question,
                                  history, feedback)
@@ -93,6 +126,17 @@ class NL2SQLPipeline:
                 return result
 
             vres = self._validate(trace, last_sql, SQLValidator(schema_dict, self.max_rows))
+
+            # TOP-N heuristic (mt-002 lesson): question demands 前N but SQL lacks
+            # LIMIT — not a syntax error, only detectable against the question text
+            if vres.ok and top_n and not re.search(r"\bLIMIT\b", vres.sql, re.I):
+                vres = vres.__class__(ok=False, errors=[
+                    f"问题要求前 {top_n} 个结果，但 SQL 缺少 LIMIT {top_n}，请修正"])
+                with trace.span("sql_validate", NodeType.STEP, input=last_sql) as hnode:
+                    trace.finish(hnode, status=NodeStatus.ERROR, detail={
+                        "sql": last_sql, "valid": False, "heuristic": "topn-limit",
+                        "errors": vres.errors})
+
             if not vres.ok:
                 result.repair_rounds = round_no
                 feedback = f"SQL: {last_sql}\n校验错误: {'; '.join(vres.errors)}"

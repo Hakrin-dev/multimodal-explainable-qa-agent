@@ -29,6 +29,11 @@ class RAGRequest(BaseModel):
     doc_filter: str | None = None
 
 
+class ChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    session_id: str = "default"
+
+
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     s = get_settings()
@@ -75,6 +80,54 @@ def rag_query(req: RAGRequest) -> dict[str, Any]:
     }
 
 
+@app.post("/api/chat")
+def chat(req: ChatRequest) -> dict[str, Any]:
+    """Orchestrated turn (JSON form). SSE form: POST /api/chat/stream."""
+    from .agent.kernel import AgentKernel
+    r = AgentKernel().run(req.question, session_id=req.session_id)
+    return _turn_dict(r)
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(req: ChatRequest):
+    """SSE form per trace.md §4.2: turn.start / trace.node / answer.delta /
+    answer.done / clarify.request / turn.end / error."""
+    import json as _json
+    from fastapi.responses import StreamingResponse
+    from .agent.kernel import AgentKernel
+
+    def gen():
+        events: list[tuple[str, dict]] = []
+
+        def on_event(event: str, data: dict) -> None:
+            events.append((event, data))
+
+        try:
+            result = AgentKernel().run(req.question, session_id=req.session_id,
+                                       on_event=on_event)
+        except Exception as e:  # noqa: BLE001
+            events.append(("error", {"message": str(e)[:300]}))
+            result = None
+
+        for event, data in events:
+            if event in ("answer.delta", "turn.end"):
+                continue  # answer payload emitted below; turn.end must close the stream
+            yield f"event: {event}\ndata: {_json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+        if result is not None:
+            yield ("event: answer.delta\ndata: " +
+                   _json.dumps({"text": result.answer}, ensure_ascii=False) + "\n\n")
+            yield ("event: answer.done\ndata: " +
+                   _json.dumps(_turn_dict(result), ensure_ascii=False, default=str) + "\n\n")
+        # contract order (trace.md §4.2): ... answer.done → turn.end
+        turn_end = next((d for e, d in events if e == "turn.end"), {})
+        yield ("event: turn.end\ndata: " +
+               _json.dumps(turn_end, ensure_ascii=False) + "\n\n")
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache",
+                                      "X-Accel-Buffering": "no"})
+
+
 @app.get("/api/usage")
 def usage() -> dict[str, Any]:
     return get_llm_service().usage_summary()
@@ -95,6 +148,21 @@ def _result_dict(r: NL2SQLResult) -> dict[str, Any]:
         "status": r.status,
         "errors": r.errors,
         "repair_rounds": r.repair_rounds,
+        "latency_ms": r.latency_ms,
+        "trace": r.trace,
+    }
+
+
+def _turn_dict(r) -> dict[str, Any]:
+    return {
+        "question": r.question,
+        "answer": r.answer,
+        "intent": r.intent,
+        "status": r.status,
+        "data": r.data,
+        "citations": r.citations,
+        "clarify": r.clarify,
+        "cost_rmb": r.cost_rmb,
         "latency_ms": r.latency_ms,
         "trace": r.trace,
     }

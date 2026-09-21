@@ -115,3 +115,20 @@ def test_rewriter_alias(tmp_path):
     r = rewrite("摇滚曲风有多少首歌", terms)
     assert "Rock" in r.question
     assert any(w["before"] == "摇滚" for w in r.rewrites)
+
+
+# ------------------------------------------------------- top-n heuristic --
+
+@pytest.mark.parametrize("q,n", [
+    ("销量前十的曲目", 10), ("前 5 名客户", 5), ("消费最高的前3位", 3),
+    ("Top 10 artists", 10), ("曲风种类", None), ("所有客户", None),
+])
+def test_topn_requirement(q, n):
+    from app.nl2sql.pipeline import topn_requirement
+    assert topn_requirement(q) == n
+
+
+def test_topn_no_false_positive_on_time_span():
+    from app.nl2sql.pipeline import topn_requirement
+    assert topn_requirement("前一年的销售额是多少") is None
+    assert topn_requirement("销量前十的曲目") == 10
