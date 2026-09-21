@@ -44,13 +44,19 @@ echo "· extracting term dictionary …"
 docker compose -f deploy/docker-compose.yml --env-file .env --project-name mqa run --rm --no-deps backend \
   python scripts/extract_terms.py
 
-# 3b. knowledge-base docs (PDFs versioned in git; ingest idempotent by content hash)
-if ls data/docs_raw/*.pdf >/dev/null 2>&1; then
+# 3b. knowledge-base docs (PDFs versioned in git; ingest idempotent by content hash).
+# Clean state: embedding model is NOT in git — B downloads it per onboarding doc;
+# until then the RAG path is skipped gracefully so NL2SQL flow stays green.
+EMB_MODEL_OK=$(docker compose -f deploy/docker-compose.yml --env-file .env --project-name mqa \
+  run --rm --no-deps backend python -c \
+  "from app.core.config import resolve_repo_path, Settings; exit(0 if resolve_repo_path(Settings().embedding_model_path).exists() else 1)" 2>/dev/null \
+  && echo yes || echo no)
+if [ "$EMB_MODEL_OK" = "yes" ] && ls data/docs_raw/*.pdf >/dev/null 2>&1; then
   echo "· ingesting KB docs (local embedding) …"
   docker compose -f deploy/docker-compose.yml --env-file .env --project-name mqa \
     run --rm --no-deps backend python scripts/ingest_docs.py 2>/dev/null | tail -4
 else
-  echo "· no PDFs in data/docs_raw (host: python scripts/gen_kb_docs.py to create)"
+  echo "· KB ingest skipped (embedding model not downloaded — see docs/onboarding/B_onboarding.md §1)"
 fi
 
 # 4. backend + frontend up
@@ -77,10 +83,12 @@ echo "· scripted eval smoke (mock provider):"
 docker compose -f deploy/docker-compose.yml --env-file .env --project-name mqa \
   run --rm --no-deps backend python scripts/smoke_nl2sql.py 2>/dev/null | tail -4
 
-# RAG retrieval smoke (real local embedding + real retrieval, mock generation)
-echo "· RAG retrieval smoke:"
-docker compose -f deploy/docker-compose.yml --env-file .env --project-name mqa \
-  run --rm --no-deps backend python scripts/smoke_rag.py 2>/dev/null | grep -E 'recall|loaded' | tail -2
+# RAG retrieval smoke (only when embedding model is present)
+if [ "$EMB_MODEL_OK" = "yes" ]; then
+  echo "· RAG retrieval smoke:"
+  docker compose -f deploy/docker-compose.yml --env-file .env --project-name mqa \
+    run --rm --no-deps backend python scripts/smoke_rag.py 2>/dev/null | grep -E 'recall|loaded' | tail -2
+fi
 
 cat <<'EOF'
 

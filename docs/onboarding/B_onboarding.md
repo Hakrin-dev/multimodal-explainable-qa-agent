@@ -47,7 +47,18 @@ cd backend
 python3 -m venv .venv
 .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU 版！见 §6.3
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests/ -q        # 41 个测试应全绿
+.venv/bin/python -m pytest tests/ -q        # 测试应全绿（RAG 集成项会 SKIP，见下一行）
+
+# 下载本地嵌入模型（不入 git，干净状态下必须做这一步，否则 RAG 路径 SKIP）：
+cd .. && mkdir -p models
+cd backend && HF_ENDPOINT=https://hf-mirror.com .venv/bin/python - <<'EOF'
+from huggingface_hub import snapshot_download
+import os
+print(snapshot_download("BAAI/bge-small-zh-v1.5",
+      local_dir=os.path.abspath("../models/bge-small-zh-v1.5")))
+EOF
+.venv/bin/python -m pytest tests/ -q        # 现在应 41 项全过（含 RAG 集成）
+.venv/bin/python scripts/ingest_docs.py     # 首次摄入知识库（建 kb_doc/kb_chunk 表）
 ```
 
 ---

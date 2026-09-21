@@ -13,6 +13,22 @@ requires_db = pytest.mark.skipif(
 )
 
 
+def _local_model_present() -> bool:
+    """Clean-state guard: integration tests need the local embedding model
+    (B re-downloads it per onboarding doc §1; model dir is NOT in git)."""
+    from app.core.config import resolve_repo_path, Settings
+    try:
+        return resolve_repo_path(Settings().embedding_model_path).exists()
+    except Exception:
+        return False
+
+
+requires_embedding = pytest.mark.skipif(
+    not _local_model_present(),
+    reason="local embedding model not downloaded (see docs/onboarding/B_onboarding.md §1)",
+)
+
+
 # ------------------------------------------------------------------ units --
 
 def test_mock_embedding_deterministic_and_token_sensitive():
@@ -50,6 +66,7 @@ def test_citation_shape():
 # ------------------------------------------------------------ integration --
 
 @requires_db
+@requires_embedding
 def test_rag_pipeline_end_to_end_mock(tmp_path):
     """Real DB + real store + REAL local embedding (dim must match kb_chunk);
     mock LLM only. Ingests a synthetic doc via IR, runs, cleans up."""
@@ -89,6 +106,7 @@ def test_rag_pipeline_end_to_end_mock(tmp_path):
 
 
 @requires_db
+@requires_embedding
 def test_kb_chunk_store_roundtrip(tmp_path):
     from app.rag.embedding import EmbeddingService
     from app.rag.store import KBStore
