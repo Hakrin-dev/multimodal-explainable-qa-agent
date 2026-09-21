@@ -65,6 +65,15 @@
 
 ## D2+（滚动更新）
 
+- 9/22（下午，A 代劳）：B 的 W1 阻塞项已全部解除，详见 `docs/onboarding/B_onboarding.md`
+  - ✅ 知识库文档 v0：3 份（员工手册含提成公式 / 销售总结与 Employee 表联动 / 客服 SOP），`scripts/gen_kb_docs.py` 程序化生成 PDF
+  - ✅ 摄入 IR 契约 v0.1：`docs/contracts/ingestion_ir.md`（Block/Chunk/Formula/Doc 四件套，已随实现验证）
+  - ✅ 单文档 RAG 最小闭环：PyMuPDF 解析→字号标题识别→面包屑切片→pgvector+jieba-BM25 混合检索（RRF）→引用生成；**检索 recall@6 = 8/8，全部命中 rank#1**
+  - ✅ RAG 选型用例 6 个 + 双指标 runner（retrieval_hit / answer_hit）
+  - ✅ Embedding 抽象层：local(bge-small-zh CPU)/siliconflow/mock 三 provider；换 BGE-M3 只改 .env 路径
+  - ✅ `POST /api/rag` 端点 + RAG Prompt 静态层草案（引用规范+忠实度约束）
+  - 测试 41 通过（摄入解析/切片/IR 回环/RAG 管道/store 回程）
+
 - 9/23: （待更新）
 
 ---

@@ -42,11 +42,15 @@ services:
       QWEN_MODEL: ${QWEN_MODEL:-qwen-plus}
       SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
       LLM_RESPONSE_CACHE: ${LLM_RESPONSE_CACHE:-1}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
+      EMBEDDING_MODEL_PATH: ${EMBEDDING_MODEL_PATH:-models/bge-small-zh-v1.5}
+      SILICONFLOW_EMBEDDING_MODEL: ${SILICONFLOW_EMBEDDING_MODEL:-BAAI/bge-m3}
     ports:
       - "8000:8000"
     volumes:
       - ../backend:/app
       - ../data:/app/data
+      - ../models:/app/models:ro
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:

@@ -20,15 +20,24 @@
 - reference_sql 必须含确定性 ORDER BY（无序语义时也要指定一个稳定序）
 - 系统自修复循环成功 = 得分；另报 **免修复首过率**（W1 选型评测的裁决指标之一）
 
-## RAG 用例（B/C W2 定稿，占位）
+## RAG 用例（v0.1 定稿，已入库 6 例）
 
 ```json
 {
-  "id": "rag-001", "category": "rag_single_doc", "question": "年假有几天？",
-  "expected_facts": ["15 天"],          // 关键事实自动匹配
-  "judge": "llm_as_judge"               // 双评之一
+  "id": "rag-001",
+  "category": "rag_single_doc",
+  "question": "普通客户的工单必须在多长时间内首次响应？",
+  "expected_facts": ["24"],
+  "notes": "事实型-sop"
 }
 ```
+
+- **评分双指标**（定位失败层）：
+  - `retrieval_hit`：expected_facts 全部出现在 top-k 检索文本中（纯检索质量，不耗 LLM）
+  - `answer_hit`：expected_facts 全部出现在生成答案中（端到端，当前为忠实度代理）
+- 匹配规则：**空白不敏感**（PDF 硬换行会拆开 token，如 "5 天"→"5\n天"）
+- W2 升级：LLM-as-judge 双评（C 主导），expected_facts 保留作自动下限指标
+- 用例文件：`backend/eval/cases/rag_single_doc.jsonl`；runner：`eval/run_rag.py`
 
 ## 变更记录
 

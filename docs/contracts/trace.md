@@ -40,7 +40,7 @@ turn (root: question)
 | `repair_round` | sql_repair | 自修复第几轮（≤3） |
 | `row_count` / `truncated` | sql_execute | 行数与是否截断 |
 | `chart_hint` | summarize | 图表建议（bar/line/pie/null） |
-| `citations[]` | rag 节点 | `{doc, page, snippet}` |
+| `citations[]` | rag_search | `{doc, doc_id, page, breadcrumb, snippet, score}` ——已定稿，实现见 `rag/retriever.py::ChunkHit.citation()`，前端可直接渲染 |
 | `slots` / `missing_slots[]` / `options{}` | clarify | 槽位状态 |
 | `cost_rmb` / `model` / `tokens{}` | llm_call | 用量记账（与 SQLite 账本冗余，便于单轮成本归因） |
 

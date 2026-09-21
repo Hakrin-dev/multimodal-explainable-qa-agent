@@ -1,0 +1,6 @@
+{"id": "rag-001", "category": "rag_single_doc", "question": "普通客户的工单必须在多长时间内首次响应？", "expected_facts": ["24"], "notes": "事实型-sop"}
+{"id": "rag-002", "category": "rag_single_doc", "question": "客服人员有哪些服务禁语？", "expected_facts": ["这不归我管", "你自己看说明"], "notes": "事实型-sop"}
+{"id": "rag-003", "category": "rag_single_doc", "question": "入职满十年的员工每年享有多少天年假？", "expected_facts": ["20"], "notes": "数值型-手册"}
+{"id": "rag-004", "category": "rag_single_doc", "question": "音频质量有问题的商品，购买后几天内可以申请免费更换？", "expected_facts": ["7"], "notes": "条款型-sop"}
+{"id": "rag-005", "category": "rag_single_doc", "question": "销售岗的月度提成怎么计算？月度销售目标是多少？", "expected_facts": ["3%", "2%", "10"], "notes": "跨块定位-手册(提成章节+目标章节)"}
+{"id": "rag-006", "category": "rag_single_doc", "question": "Jane Peacock 的销售方法论强调什么？", "expected_facts": ["复购"], "notes": "事实型-销售总结(跨源多跳素材)"}

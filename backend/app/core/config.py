@@ -14,8 +14,24 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BACKEND_DIR = Path(__file__).resolve().parents[2]  # backend/
-REPO_DIR = BACKEND_DIR.parent
+BACKEND_DIR = Path(__file__).resolve().parents[2]  # backend/ (container: /app)
+REPO_DIR = BACKEND_DIR.parent                        # host: repo root; container: /
+
+
+def resolve_repo_path(rel: str | Path) -> Path:
+    """Resolve a repo-relative resource to an existing absolute path.
+
+    Container layout mounts data & models under BACKEND_DIR (/app/data, /app/models);
+    host layout keeps them in the repo root next to backend/. Probe both.
+    """
+    p = Path(rel)
+    if p.is_absolute():
+        return p
+    for base in (BACKEND_DIR, REPO_DIR):
+        cand = base / p
+        if cand.exists():
+            return cand
+    return REPO_DIR / p  # non-existent: caller raises a clear error
 
 
 class LLMProviderConfig(BaseModel):
@@ -63,6 +79,11 @@ class Settings(BaseSettings):
     llm_usage_db: str = "var/llm_usage.sqlite"  # relative to backend/
     llm_timeout: float = 60.0
     llm_max_retries: int = 2
+
+    # ---- embedding (D9-B: local first, SiliconFlow API fallback) ----
+    embedding_provider: str = "local"  # local | siliconflow | mock
+    embedding_model_path: str = "models/bge-small-zh-v1.5"  # relative to repo
+    siliconflow_embedding_model: str = "BAAI/bge-m3"
 
     # ---- nl2sql pipeline ----
     sql_max_rows: int = 50

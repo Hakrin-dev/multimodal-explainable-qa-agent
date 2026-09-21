@@ -7,6 +7,15 @@ sqlglot>=25.0
 psycopg[binary]>=3.1
 openai>=1.30          # lazy-imported; only needed for real providers
 
+# RAG / ingestion (B)
+pymupdf>=1.24
+reportlab>=4.0
+jieba>=0.42
+numpy>=1.26
+sentence-transformers>=3.0
+# torch: install CPU build separately (default pypi wheel pulls ~2.5GB CUDA):
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+
 # dev / test
 pytest>=8.0
 httpx>=0.27           # fastapi TestClient

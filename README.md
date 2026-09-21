@@ -21,13 +21,15 @@
 ```
 backend/
   app/
-    core/          配置(.env 驱动) · LLM 抽象层(provider切换/响应缓存/用量记账) · Trace 数据模型 · Prompt 模板
+    core/          配置(.env 驱动) · LLM 抽象层(provider切换/响应缓存/用量记账) · Trace 数据模型 · Prompt 模板(nl2sql/agent/rag)
     db/            PG 会话 · Schema 元数据读取（语义卡原料）
     nl2sql/        问数流水线：改写(术语链接) → 生成 → sqlglot 校验 → 只读执行 → 自修复 → 总结
-    agent/ rag/ …  W2 起填充（编排内核 / RAG 引擎）
-  scripts/         Chinook SQLite→PG 转换导入 · 术语库抽取 · 冒烟
-  eval/            用例集(单表 10 + 多表 20 + 选型 10) · 跑分 runner · 用例预检 · LLM 选型评测(D1)
-  tests/           单测(27) + 集成测试(需 DB)
+    rag/           问答引擎：Embedding 抽象 · pgvector+BM25 存储 · RRF 混合检索 · 引用生成
+    ingestion/     摄入流水线：IR 中间表示 · PyMuPDF 解析(字号标题识别) · 面包屑切片
+    agent/ …       W2 起填充（编排内核）
+  scripts/         Chinook 导入 · 术语库抽取 · 知识库 PDF 生成 · 文档摄入 · 双引擎冒烟
+  eval/            用例集(单表 10 + 多表 20 + 选型 10 + RAG 6) · 双 runner · 用例预检
+  tests/           41 个测试（单测 + 集成）
 frontend/          占位（W2: Vue 3 + TS + Vite + Naive UI）
 deploy/            docker-compose · quick_start.sh
 data/              db_raw(Chinook SQLite) · db_schema(生成 DDL/术语种子) · docs_raw / docs_parsed / eval_cases

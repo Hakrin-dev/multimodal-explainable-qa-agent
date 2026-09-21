@@ -44,6 +44,15 @@ echo "· extracting term dictionary …"
 docker compose -f deploy/docker-compose.yml --env-file .env --project-name mqa run --rm --no-deps backend \
   python scripts/extract_terms.py
 
+# 3b. knowledge-base docs (PDFs versioned in git; ingest idempotent by content hash)
+if ls data/docs_raw/*.pdf >/dev/null 2>&1; then
+  echo "· ingesting KB docs (local embedding) …"
+  docker compose -f deploy/docker-compose.yml --env-file .env --project-name mqa \
+    run --rm --no-deps backend python scripts/ingest_docs.py 2>/dev/null | tail -4
+else
+  echo "· no PDFs in data/docs_raw (host: python scripts/gen_kb_docs.py to create)"
+fi
+
 # 4. backend + frontend up
 echo "· starting backend + frontend …"
 docker compose -f deploy/docker-compose.yml --env-file .env --project-name mqa up -d backend frontend
@@ -63,10 +72,15 @@ RESP=$(curl -s -X POST http://localhost:8000/api/nl2sql \
 echo "· /api/nl2sql smoke (mock provider):"
 echo "$RESP" | python3 -c "import json,sys; d=json.load(sys.stdin); print('  status =', d['status']); print('  sql    =', d['sql'] or '(mock: no SQL without API key)')"
 
-# scripted-mock eval over 10 cases — proves the full loop (no API key needed)
+# scripted-mock eval over NL2SQL cases — proves the full loop (no API key needed)
 echo "· scripted eval smoke (mock provider):"
 docker compose -f deploy/docker-compose.yml --env-file .env --project-name mqa \
   run --rm --no-deps backend python scripts/smoke_nl2sql.py 2>/dev/null | tail -4
+
+# RAG retrieval smoke (real local embedding + real retrieval, mock generation)
+echo "· RAG retrieval smoke:"
+docker compose -f deploy/docker-compose.yml --env-file .env --project-name mqa \
+  run --rm --no-deps backend python scripts/smoke_rag.py 2>/dev/null | grep -E 'recall|loaded' | tail -2
 
 cat <<'EOF'
 

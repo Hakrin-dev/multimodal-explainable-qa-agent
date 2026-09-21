@@ -24,6 +24,11 @@ class QueryRequest(BaseModel):
     history: list[dict] | None = None
 
 
+class RAGRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    doc_filter: str | None = None
+
+
 @app.get("/api/health")
 def health() -> dict[str, Any]:
     s = get_settings()
@@ -57,6 +62,17 @@ def get_schema() -> dict[str, Any]:
 def get_terms() -> dict[str, Any]:
     from .nl2sql import rewriter
     return {"terms": rewriter.load_terms()}
+
+
+@app.post("/api/rag")
+def rag_query(req: RAGRequest) -> dict[str, Any]:
+    from .rag.pipeline import RAGPipeline
+    pipeline = RAGPipeline()
+    r = pipeline.run(req.question)
+    return {
+        "question": r.question, "answer": r.answer, "status": r.status,
+        "citations": r.citations, "latency_ms": r.latency_ms, "trace": r.trace,
+    }
 
 
 @app.get("/api/usage")
