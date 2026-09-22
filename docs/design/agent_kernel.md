@@ -72,8 +72,19 @@ question ──► ① intent（LLM 结构化输出，history-aware，JSON 解�
 - [x] ~~指代消解改写~~（W2-D2 完成：`agent/rewrite.py`，`agent.rewrite` 家族已注册；
       改写对照进 Trace detail.rewrites + TurnResult.rewritten 供 UI 展示）
 - [x] ~~澄清超时清理~~（W2-D2 完成：挂起态带 `_ts`，TTL 600s，过期不再遮蔽新问题）
-- [ ] HYBRID 真 DAG（并行子任务 + 依赖编排）（W4 前完成）
+- [x] ~~HYBRID 真 DAG~~（W2-D3 完成：planner 产出 id/depends_on 任务图，拓扑波次并行执行（ThreadPoolExecutor×3），{tN.result} 占位符驱动依赖边，环容错回退；实测独立双源并发 4.6s、依赖链实体紧凑注入命中目标 chunk）
 - [ ] 澄清多轮（>1 次追问）
+
+## 8. W2-D3 HYBRID DAG 执行（v1.2）
+
+```
+plan → [{id, tool, question, depends_on}] + edges 入 Trace
+  → 拓扑波次：in-degree 0 的任务并发（max 3 workers）
+  → 依赖任务等待上游完成后做占位符替换（紧凑实体 key 优先，防检索稀释）
+  → fan-in fuse（分区溯源）
+```
+教训记录：① DAG 重写时丢了 parent 传递导致子任务流水线平铺（测试守护住了嵌套断言）；
+② 长摘要注入 RAG 查询会稀释检索——占位符注入用首行字符串单元格（实体名）。
 
 ## 7. W2-D2 新增执行流（v1.1）
 

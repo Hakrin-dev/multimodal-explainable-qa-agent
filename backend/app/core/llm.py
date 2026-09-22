@@ -35,7 +35,9 @@ def _store_path(settings: Settings) -> Path:
 Role = Literal["system", "user", "assistant"]
 
 # Bump when prompt templates change -> invalidates stale cache entries.
-PROMPT_TEMPLATE_VERSION = "v0.3-w1-d4"
+# v0.4-w2-d3: agent.plan schema evolution (task DAG: id/depends_on/placeholders)
+# — registered exception to the text freeze, see prompt_static_layer.md changelog.
+PROMPT_TEMPLATE_VERSION = "v0.4-w2-d3"
 
 
 # ---------------------------------------------------------------------------

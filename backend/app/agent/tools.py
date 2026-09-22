@@ -70,10 +70,21 @@ def _tool_nl2sql(question: str, trace: TraceCollector,
     if result.status == "error":
         return ToolResult(ok=False, data={"errors": result.errors},
                           degraded_reason="SQL 生成失败（自修复后仍不可用）")
+    # compact key for downstream placeholders (DAG dependency substitution):
+    # injecting a full summary into a RAG query dilutes retrieval — prefer the
+    # string cells of the first row (entity names), fall back to first sentence
+    key = ""
+    if result.rows:
+        str_cells = [str(v).strip() for v in result.rows[0]
+                     if isinstance(v, str) and v.strip()]
+        key = " ".join(str_cells)[:60]
+    if not key:
+        key = (result.summary or "").split("。")[0].strip()[:60]
     return ToolResult(ok=True, data={
         "sql": result.sql, "columns": result.columns,
         "rows": result.rows, "row_count": result.row_count,
         "chart_hint": result.chart_hint, "summary": result.summary,
+        "key": key,
         "analysis": result.analysis, "status": result.status,
         "missing": result.errors[:1] if result.status == "needs_clarification" else [],
     })

@@ -224,10 +224,14 @@ class AgentKernel:
                           citations=citations)
 
     def _hybrid(self, trace, emit, question) -> TurnResult:
+        """DAG execution (v1.2): topological waves — independent sub-tasks run
+        concurrently (ThreadPoolExecutor), dependents wait on {tN.result}."""
         with trace.span("plan", NodeType.PLAN, input=question) as node:
             tasks = self.planner.plan(question, self.registry.inventory)
-            trace.finish(node, output={"n_tasks": len(tasks)},
-                         detail={"sub_tasks": tasks})
+            edges = [{"from": d, "to": t["id"]}
+                     for t in tasks for d in t["depends_on"]]
+            trace.finish(node, output={"n_tasks": len(tasks), "n_edges": len(edges)},
+                         detail={"sub_tasks": tasks, "edges": edges})
         emit("trace.node", _node_event(trace, node))
 
         if not tasks:
@@ -235,26 +239,54 @@ class AgentKernel:
             emit("answer.delta", {"text": answer})
             return TurnResult(question=question, status="degraded", answer=answer)
 
-        sub_results: list[dict] = []
-        for i, task in enumerate(tasks, 1):
-            q = task["question"]
-            # v1 linear chaining: {上一步结果} binds to the LAST completed step
-            if sub_results and "{上一步结果}" in q:
-                prev = sub_results[-1]["result"]
-                q = q.replace("{上一步结果}",
-                              str(prev.get("summary") or prev.get("answer")
-                                  or prev.get("error", ""))[:300])
+        results: dict[str, dict] = {}     # task_id -> {"tool","question","result"}
+        remaining = {t["id"]: t for t in tasks}
+        order = {t["id"]: i for i, t in enumerate(tasks, 1)}
+
+        def substitute(q: str) -> str:
+            def _ref(sr: dict) -> str:
+                # compact entity-first reference (full summaries dilute retrieval)
+                r = sr["result"]
+                return str(r.get("key") or r.get("summary") or r.get("answer")
+                           or r.get("error", ""))[:120]
+            for tid, sr in results.items():
+                q = q.replace(f"{{{tid}.result}}", _ref(sr))
+            # legacy placeholder binds to the latest completed task
+            if "{上一步结果}" in q and results:
+                latest = max(results, key=lambda t: order.get(t, 0))
+                q = q.replace("{上一步结果}", _ref(results[latest]))
+            return q
+
+        def run_task(task: dict) -> None:
+            q = substitute(task["question"])
             spec = self.registry.get(task["tool"])
-            with trace.span(f"subtask_{i}:{task['tool']}", NodeType.TOOL_CALL,
-                            input=q) as node:
-                tr = spec.handler(question=q, trace=trace)
-                trace.finish(node, status=NodeStatus.OK if tr.ok else NodeStatus.DEGRADED,
-                             output=None, detail={"degraded": not tr.ok})
+            label = f"subtask_{order[task['id']]}:{task['tool']}"
+            with trace.span(label, NodeType.TOOL_CALL, input=q) as node:
+                tr = spec.handler(question=q, trace=trace, parent=node)
+                trace.finish(node,
+                             status=NodeStatus.OK if tr.ok else NodeStatus.DEGRADED,
+                             output=None,
+                             detail={"degraded": not tr.ok, "task_id": task["id"]})
             emit("trace.node", _node_event(trace, node))
-            sub_results.append({
+            results[task["id"]] = {
                 "tool": task["tool"], "question": q,
                 "result": tr.data if tr.ok else {"error": tr.degraded_reason},
-            })
+            }
+
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            while remaining:
+                # wave = tasks whose deps are all satisfied
+                wave = [t for tid, t in remaining.items()
+                        if all(d in results for d in t["depends_on"])]
+                if not wave:   # cycle / broken deps — run rest sequentially
+                    wave = list(remaining.values())
+                futures = [pool.submit(run_task, t) for t in wave]
+                for t in wave:
+                    remaining.pop(t["id"])
+                for f in futures:
+                    f.result()
+        sub_results = [results[t["id"]] for t in tasks]   # plan order preserved
 
         with trace.span("fuse", NodeType.FUSE) as node:
             messages = build_fuse_messages(question, sub_results)

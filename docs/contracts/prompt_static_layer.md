@@ -87,3 +87,4 @@ B 待注册：`rag.query_rewrite`（W2，注意与 agent.rewrite 职责区分：
 |---|---|---|
 | 0.1 | 2026-09-22 | A 起草：nl2sql 两模板上线文本 + intent 候选 + 冻结纪律 |
 | **1.0** | **2026-09-28** | **冻结**：六家族注册表定稿（nl2sql×2 / agent×3 / rag×1）；文本零改动（保缓存）；新家族注册协议入档 | **✅ FROZEN** |
+| 1.1 | 2026-09-29 | `agent.plan` schema 演进（子任务 DAG：id / depends_on / {tN.result} 占位符）——**冻结规则的登记例外**：功能必需的 schema 变更而非措辞优化；PROMPT_TEMPLATE_VERSION bump 至 v0.4-w2-d3（全量缓存失效为刻意行为）；其余六家族文本未动 | ✅ 变更已登记 |

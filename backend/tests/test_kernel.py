@@ -296,3 +296,106 @@ def test_clarify_ttl_expiry(tmp_path):
     r2 = k.run("你好呀", session_id="ttl1")   # fresh question, stale clarify ignored
     assert r2.status == "ok" and r2.intent == "CHAT"
     assert r2.trace["root"]["children"][0].get("output", {}).get("resumed") is None or True
+
+
+# ------------------------------------------------ W2-D3: hybrid task DAG --
+
+def _dag_kernel(tmp_path, scripted, tools: dict[str, callable] | None = None) -> AgentKernel:
+    reg = ToolRegistry()
+    def _mk(name, fn):
+        reg.register(ToolSpec(name, f"stub {name}", fn))
+    _mk("nl2sql", tools and tools.get("nl2sql") or
+        (lambda question, trace, **_: ToolResult(ok=True, data={
+            "sql": "SELECT 1", "summary": "共 42 条。"})))
+    _mk("rag_search", tools and tools.get("rag") or
+        (lambda question, trace, **_: ToolResult(ok=True, data={
+            "answer": "文档答案[1]。", "citations": []})))
+    _mk("db_lookup_entity", lambda term, **_: ToolResult(ok=True, data={}))
+    _mk("formula_eval", lambda **_: ToolResult(ok=False, degraded_reason="W4"))
+    return AgentKernel(llm=_llm(tmp_path, scripted), registry=reg,
+                       sessions=SessionStore(persist=False))
+
+
+def test_hybrid_dag_parallel_execution(tmp_path):
+    """Two independent tasks rendezvous on a Barrier(2): sequential = deadlock,
+    concurrent = pass. Deterministic proof of parallelism."""
+    import threading
+    barrier = threading.Barrier(2, timeout=5)
+
+    def nl2sql(question, trace, **_):
+        barrier.wait()                     # only passes if rag runs CONCURRENTLY
+        return ToolResult(ok=True, data={"summary": "摇滚销量 100"})
+
+    def rag(question, trace, **_):
+        barrier.wait()
+        return ToolResult(ok=True, data={"answer": "手册规定[1]。"})
+
+    k = _dag_kernel(tmp_path, [
+        _intent({"intent": "HYBRID", "confidence": 0.9}),
+        _intent({"sub_tasks": [
+            {"id": "t1", "tool": "nl2sql", "question": "摇滚曲风销量", "depends_on": []},
+            {"id": "t2", "tool": "rag_search", "question": "手册提成规定", "depends_on": []},
+        ]}),
+        "综合结果。",
+    ], tools={"nl2sql": nl2sql, "rag": rag})
+    r = k.run("对比摇滚销量并引用手册提成规定")
+    assert r.status == "ok"
+    assert r.data["sub_results"] == [
+        {"tool": "nl2sql", "question": "摇滚曲风销量"},
+        {"tool": "rag_search", "question": "手册提成规定"},
+    ]
+
+
+def test_hybrid_dag_dependency_substitution(tmp_path):
+    """t2 depends on t1 via {t1.result} placeholder — receives t1's summary."""
+    seen = {}
+
+    def nl2sql(question, trace, **_):
+        seen["t1_question"] = question
+        return ToolResult(ok=True, data={"summary": "冠军是 Jane", "key": "冠军是 Jane"})
+
+    def rag(question, trace, **_):
+        seen["t2_question"] = question
+        return ToolResult(ok=True, data={"answer": "方法论[1]。"})
+
+    k = _dag_kernel(tmp_path, [
+        _intent({"intent": "HYBRID", "confidence": 0.9}),
+        _intent({"sub_tasks": [
+            {"id": "t1", "tool": "nl2sql", "question": "销售冠军是谁", "depends_on": []},
+            {"id": "t2", "tool": "rag_search", "question": "{t1.result} 的工作方法论",
+             "depends_on": ["t1"]},
+        ]}),
+        "融合。",
+    ], tools={"nl2sql": nl2sql, "rag": rag})
+    r = k.run("销售冠军是谁？总结方法论")
+    assert r.status == "ok"
+    assert seen["t1_question"] == "销售冠军是谁"
+    assert "冠军是 Jane" in seen["t2_question"]   # placeholder substituted
+
+
+def test_hybrid_dag_cycle_fallback(tmp_path):
+    """Cyclic deps must not deadlock — fallback runs everything."""
+    k = _dag_kernel(tmp_path, [
+        _intent({"intent": "HYBRID", "confidence": 0.9}),
+        _intent({"sub_tasks": [
+            {"id": "t1", "tool": "nl2sql", "question": "q1", "depends_on": ["t2"]},
+            {"id": "t2", "tool": "rag_search", "question": "q2", "depends_on": ["t1"]},
+        ]}),
+        "结果。",
+    ])
+    r = k.run("跨源问题")
+    assert r.status == "ok"      # both ran despite the cycle
+
+
+def test_planner_legacy_linear_compat(tmp_path):
+    """Old-schema plans (no ids, {上一步结果}) normalize to a dependency chain."""
+    from app.agent.planner import Planner
+    p = Planner(_llm(tmp_path, [
+        _intent({"sub_tasks": [
+            {"tool": "nl2sql", "question": "冠军是谁"},
+            {"tool": "rag_search", "question": "{上一步结果} 的方法论"},
+        ]}),
+    ]))
+    tasks = p.plan("q", "- nl2sql\n- rag_search")
+    assert [t["id"] for t in tasks] == ["t1", "t2"]
+    assert tasks[1]["depends_on"] == ["t1"]
