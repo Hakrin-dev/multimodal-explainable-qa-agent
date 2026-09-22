@@ -194,6 +194,9 @@ def test_event_contract_shapes(tmp_path):
     # contract (trace.md §4.2): turn.start ... trace.node ... answer.delta turn.end
     assert kinds[0] == "turn.start" and kinds[-1] == "turn.end"
     assert "trace.node" in kinds and "answer.delta" in kinds
+    # C review blocking item: turn.start must carry turn_id (disconnect recovery)
+    start = [d for e, d in events if e == "turn.start"][0]
+    assert start["turn_id"], "turn.start missing turn_id"
     # every trace.node payload is a flat TraceNode dict with contract keys
     node = [d for e, d in events if e == "trace.node"][0]
     assert {"id", "type", "label", "status"} <= set(node)

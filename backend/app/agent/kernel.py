@@ -68,7 +68,8 @@ class AgentKernel:
         history = session.messages[-6:]
         pending = session.pending_clarify
 
-        emit("turn.start", {"question": question, "session_id": session_id,
+        emit("turn.start", {"turn_id": trace.turn_id, "question": question,
+                             "session_id": session_id,
                             "resumed_clarify": bool(pending)})
 
         # ① intent (history-aware; a clarify reply resolves to a full intent)
