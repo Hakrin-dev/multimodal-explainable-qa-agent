@@ -1,4 +1,4 @@
-# 契约四：摄入中间表示（Ingestion IR）v0.2（W1 末冻结 · B 主责，A 代拟初稿，B 已评审）
+# 契约四：摄入中间表示（Ingestion IR）v0.2 ✅ FROZEN（2026-09-26 · B 主责，A 代拟，B 评审细化）
 
 > 权威实现：`backend/app/ingestion/ir.py`（dataclass 即 Schema）
 > 消费方：RAG 检索（chunk）、Trace/前端溯源（page/breadcrumb）、公式计算引擎（FormulaIR）
@@ -145,5 +145,6 @@ raw file ──► 质量评估(#9) ──► 复杂度评分(#8) ──► 解�
 
 | 版本 | 日期 | 说明 |
 |---|---|---|
-| 0.1 | 2026-09-22 | A 代拟初稿（数据结构已随 RAG 最小闭环落地验证）；B 评审后冻结 |
+| 0.1 | 2026-09-22 | A 代拟初稿（数据结构已随 RAG 最小闭环落地验证） |
+| **0.2** | **2026-09-26** | **冻结**：B 评审细化（字段约束/序列化边界/治理规则）合入；实现 `ingestion/ir.py` 与文档一致（标题识别 4/4 文档 100% 命中） | **✅ FROZEN（A/B 签字）** |
 | 0.2 | 2026-09-22 | B（sxy）完成实现对照评审；明确页码、level、bbox、breadcrumb 与 content_hash 语义；评审通过并冻结 |

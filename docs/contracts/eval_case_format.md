@@ -1,4 +1,4 @@
-# 契约三：Eval 用例格式 v0.1（W1 末冻结 · 负责：C 定稿，A/B 提供输入）
+# 契约三：Eval 用例格式 v0.2 ✅ FROZEN（2026-09-26 · C 定稿，A/B 提供输入）
 
 > 用例文件：`backend/eval/cases/*.jsonl`（一行一用例）
 > 跑分脚本：`backend/eval/run_nl2sql.py`（NL2SQL）；RAG runner 由 B/C 在 W2-W3 补齐
@@ -44,3 +44,5 @@
 | 版本 | 日期 | 说明 |
 |---|---|---|
 | 0.1 | 2026-09-21 | A 起草 NL2SQL 部分（10 用例已入库）|
+| 0.1+ | 2026-09-22 | RAG 部分定稿（双指标：retrieval_hit/answer_hit，空白不敏感匹配）+ 语义 4 级匹配器说明 |
+| **0.2** | **2026-09-26** | **冻结**：NL2SQL 31 用例 + RAG 8 用例入库，双 runner + preflight 门禁就绪；W3 C 扩量（鲁棒性×30/澄清×30/多轮×8/跨源×10）按本格式追加 | **✅ FROZEN（A/B/C 签字）** |
