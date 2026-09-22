@@ -403,9 +403,10 @@ class LLMService:
             key = self.store.cache_key(pname, model, params, messages)
             hit = self.store.cache_get(key)
             if hit is not None:
-                # ledger: record the free hit for reporting
+                # ledger: record the free hit WITH the original token counts —
+                # enables "savings" reporting (cost logged as 0, app_cache_hit=1)
                 self.store.log_usage(provider=pname, model=model, purpose=purpose,
-                                     usage=Usage(), cost_rmb=0.0, app_cache_hit=True,
+                                     usage=hit.usage, cost_rmb=0.0, app_cache_hit=True,
                                      latency_ms=0)
                 return hit
 

@@ -1,4 +1,4 @@
-# 契约二：Prompt 三层模板 · 静态层定稿候选 v0.1（W2 冻结 · 负责：A 起草）
+# 契约二：Prompt 三层模板 · 静态层 v1.0 ✅ FROZEN（2026-09-28 · D10 W2 交付 · A 起草定稿）
 
 > 关联决议：D10（W2 落地 Prompt 缓存前缀设计）、§11.3（三层缓存设计）
 > 实现代码：`backend/app/core/prompts/`（nl2sql.py / agent.py）
@@ -22,7 +22,26 @@ Qwen 隐式上下文缓存同理）。三层结构保证最大公共前缀稳定
 3. 半静态层内容按数据资产版本化（schema 卡更新 → bump 版本号，不拼在静态层里）。
 4. `LLMService.chat()` 的调用方严禁在 system 消息里混入动态内容。
 
-## 3. 静态层定稿候选（本文档即评审对象）
+## 3. 冻结的静态层注册表（v1.0，2026-09-28）
+
+> 冻结原则：W1 双百基线（NL2SQL 31/31 + RAG 8/8 + 选型终测）下的模板文本**一字未改**——
+> 改动即失效全部响应缓存与前缀缓存收益。`PROMPT_TEMPLATE_VERSION` 维持 `v0.3-w1-d4`；
+> **版本号只在文本变更时 bump**（bump = 全量缓存失效，这是刻意的）。
+
+| # | Prompt 家族 | 代码位置 | purpose 标签 | 状态 |
+|---|---|---|---|---|
+| 1 | `nl2sql.generate` | `prompts/nl2sql.py::STATIC_RULES` | nl2sql.generate / nl2sql.summarize 之外的生成与修复轮 | ✅ 冻结 |
+| 2 | `nl2sql.summarize` | `prompts/nl2sql.py::SUMMARIZE_SYSTEM` | nl2sql.summarize | ✅ 冻结 |
+| 3 | `agent.intent` | `prompts/agent.py::INTENT_STATIC` | agent.intent / agent.intent_repair | ✅ 冻结 |
+| 4 | `agent.plan` | `agent/planner.py::PLAN_STATIC` | agent.plan | ✅ 冻结 |
+| 5 | `agent.fuse` | `agent/planner.py::FUSE_STATIC` | agent.fuse | ✅ 冻结 |
+| 6 | `rag.generate` | `prompts/rag.py::RAG_GENERATE_STATIC` | rag.generate | ✅ 冻结 |
+
+**新家族注册协议**（B/C 新增 Prompt 时遵守）：静态层文本放 `core/prompts/` 或对应模块顶部常量；
+在注册表追加一行；purpose 命名 `<域>.<动作>`；首次合入即视为冻结（此后走追加规则）。
+B 待注册：`rag.query_rewrite`（W2）、`rag.factcheck`（W3）；C 无（前端不写 Prompt）。
+
+### 3.x 历史候选（已被 v1.0 取代，过程记录）
 
 ### 3.1 `nl2sql.generate`（已上线 v0.1，见 `prompts/nl2sql.py::STATIC_RULES`）
 
@@ -66,3 +85,4 @@ Qwen 隐式上下文缓存同理）。三层结构保证最大公共前缀稳定
 | 版本 | 日期 | 说明 |
 |---|---|---|
 | 0.1 | 2026-09-22 | A 起草：nl2sql 两模板上线文本 + intent 候选 + 冻结纪律 |
+| **1.0** | **2026-09-28** | **冻结**：六家族注册表定稿（nl2sql×2 / agent×3 / rag×1）；文本零改动（保缓存）；新家族注册协议入档 | **✅ FROZEN** |

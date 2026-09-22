@@ -114,7 +114,10 @@ async def chat_stream(req: ChatRequest):
                                    on_event=lambda e, d: q.put((e, d)))
             q.put(("__result__", r))
         except Exception as e:  # noqa: BLE001
-            q.put(("error", {"message": str(e)[:300]}))
+            # contract trace.md §4.2 (C review): stable code + recoverable flag
+            code = getattr(e, "code", None) or type(e).__name__
+            q.put(("error", {"message": str(e)[:300], "code": code,
+                             "recoverable": True}))
             q.put(("__result__", None))
 
     _threading.Thread(target=worker, daemon=True).start()
@@ -188,7 +191,14 @@ def list_traces(session_id: str | None = None, limit: int = 20) -> dict[str, Any
 
 @app.get("/api/usage")
 def usage() -> dict[str, Any]:
-    return get_llm_service().usage_summary()
+    """Raw ledger summary + cache-economics stats block (C's dashboard source)."""
+    from .core.usage import stats as usage_stats
+    result = get_llm_service().usage_summary()
+    try:
+        result["stats"] = usage_stats()
+    except Exception as e:  # noqa: BLE001 — dashboard must not break on ledger issues
+        result["stats"] = {"error": str(e)[:200]}
+    return result
 
 
 def _result_dict(r: NL2SQLResult) -> dict[str, Any]:
