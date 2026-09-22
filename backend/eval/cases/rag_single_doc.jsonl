@@ -4,3 +4,5 @@
 {"id": "rag-004", "category": "rag_single_doc", "question": "音频质量有问题的商品，购买后几天内可以申请免费更换？", "expected_facts": ["7"], "notes": "条款型-sop"}
 {"id": "rag-005", "category": "rag_single_doc", "question": "销售岗的月度提成怎么计算？月度销售目标是多少？", "expected_facts": ["3%", "2%", "10"], "notes": "跨块定位-手册(提成章节+目标章节)"}
 {"id": "rag-006", "category": "rag_single_doc", "question": "Jane Peacock 的销售方法论强调什么？", "expected_facts": ["复购"], "notes": "事实型-销售总结(跨源多跳素材)"}
+{"id": "rag-007", "category": "rag_single_doc", "question": "黑胶唱片可售库存低于多少件时会触发库存预警？", "expected_facts": ["120", "库存预警"], "notes": "数值型-产品运营"}
+{"id": "rag-008", "category": "rag_single_doc", "question": "数字专辑退款申请需要在几个工作日内完成复核？", "expected_facts": ["2", "退款复核"], "notes": "条款型-产品运营"}
