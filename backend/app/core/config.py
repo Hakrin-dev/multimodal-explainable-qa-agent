@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     embedding_model_path: str = "models/bge-small-zh-v1.5"  # relative to repo
     siliconflow_embedding_model: str = "BAAI/bge-m3"
 
+    # ---- agent kernel ----
+    session_persist: bool = True   # sessions & turns to PG (best-effort)
+
     # ---- nl2sql pipeline ----
     sql_max_rows: int = 50
     sql_timeout_ms: int = 5000

@@ -16,6 +16,10 @@ from .db import schema_meta
 from .db.session import test_connection
 from .nl2sql.pipeline import NL2SQLPipeline, NL2SQLResult
 
+import re
+
+_DOC_ID_RE = re.compile(r"^[a-z0-9_-]+$", re.I)
+
 app = FastAPI(title="Multimodal Explainable QA Agent", version="0.1.0")
 
 
@@ -90,42 +94,96 @@ def chat(req: ChatRequest) -> dict[str, Any]:
 
 @app.post("/api/chat/stream")
 async def chat_stream(req: ChatRequest):
-    """SSE form per trace.md §4.2: turn.start / trace.node / answer.delta /
-    answer.done / clarify.request / turn.end / error."""
+    """SSE form per trace.md §4.2 — LIVE: the kernel runs in a worker thread,
+    events are forwarded as they happen (real token streaming for CHAT/fuse)."""
     import json as _json
-    from fastapi.responses import StreamingResponse
+    import queue as _queue
+    import threading as _threading
+
+    import fastapi.responses as _fr
     from .agent.kernel import AgentKernel
 
-    def gen():
-        events: list[tuple[str, dict]] = []
+    def sse(event: str, data: dict) -> str:
+        return f"event: {event}\ndata: {_json.dumps(data, ensure_ascii=False, default=str)}\n\n"
 
-        def on_event(event: str, data: dict) -> None:
-            events.append((event, data))
+    q: _queue.Queue = _queue.Queue()
 
+    def worker() -> None:
         try:
-            result = AgentKernel().run(req.question, session_id=req.session_id,
-                                       on_event=on_event)
+            r = AgentKernel().run(req.question, session_id=req.session_id,
+                                   on_event=lambda e, d: q.put((e, d)))
+            q.put(("__result__", r))
         except Exception as e:  # noqa: BLE001
-            events.append(("error", {"message": str(e)[:300]}))
-            result = None
+            q.put(("error", {"message": str(e)[:300]}))
+            q.put(("__result__", None))
 
-        for event, data in events:
-            if event in ("answer.delta", "turn.end"):
-                continue  # answer payload emitted below; turn.end must close the stream
-            yield f"event: {event}\ndata: {_json.dumps(data, ensure_ascii=False, default=str)}\n\n"
+    _threading.Thread(target=worker, daemon=True).start()
+
+    def gen():
+        result = None
+        turn_end: dict | None = None
+        while True:
+            event, data = q.get()
+            if event == "__result__":
+                result = data
+                break
+            if event == "turn.end":
+                turn_end = data          # contract: after answer.done
+                continue
+            yield sse(event, data)
         if result is not None:
-            yield ("event: answer.delta\ndata: " +
-                   _json.dumps({"text": result.answer}, ensure_ascii=False) + "\n\n")
-            yield ("event: answer.done\ndata: " +
-                   _json.dumps(_turn_dict(result), ensure_ascii=False, default=str) + "\n\n")
-        # contract order (trace.md §4.2): ... answer.done → turn.end
-        turn_end = next((d for e, d in events if e == "turn.end"), {})
-        yield ("event: turn.end\ndata: " +
-               _json.dumps(turn_end, ensure_ascii=False) + "\n\n")
+            yield sse("answer.done", _turn_dict(result))
+        if turn_end is not None:
+            yield sse("turn.end", turn_end)
 
-    return StreamingResponse(gen(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache",
-                                      "X-Accel-Buffering": "no"})
+    return _fr.StreamingResponse(gen(), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache",
+                                          "X-Accel-Buffering": "no"})
+
+
+@app.get("/api/docs")
+def list_docs() -> dict[str, Any]:
+    """KB docs available for citation preview (front-end document picker)."""
+    from pathlib import Path
+    from .core.config import resolve_repo_path
+    docs_dir = resolve_repo_path("data/docs_raw")
+    if not docs_dir.is_dir():
+        return {"docs": []}
+    return {"docs": [
+        {"doc_id": p.stem, "name": p.stem, "file": p.name, "size": p.stat().st_size}
+        for p in sorted(docs_dir.glob("*.pdf"))
+    ]}
+
+
+@app.get("/api/docs/{doc_id}/pdf")
+def get_doc_pdf(doc_id: str):
+    """Serve a KB PDF for citation drill-down (path-traversal safe)."""
+    from fastapi.responses import FileResponse
+    from .core.config import resolve_repo_path
+    if not _DOC_ID_RE.match(doc_id):
+        raise HTTPException(400, "invalid doc id")
+    path = resolve_repo_path("data/docs_raw") / f"{doc_id}.pdf"
+    if not path.is_file():
+        raise HTTPException(404, f"doc {doc_id!r} not found")
+    return FileResponse(path, media_type="application/pdf",
+                        filename=f"{doc_id}.pdf")
+
+
+@app.get("/api/trace/{turn_id}")
+def get_trace(turn_id: str) -> dict[str, Any]:
+    """Full trace tree for a completed turn (contract trace.md §4.1).
+    C's frontend uses this for replay / reconnect."""
+    from .agent import persistence
+    tree = persistence.load_trace(turn_id)
+    if tree is None:
+        raise HTTPException(404, f"turn {turn_id!r} not found")
+    return tree
+
+
+@app.get("/api/trace")
+def list_traces(session_id: str | None = None, limit: int = 20) -> dict[str, Any]:
+    from .agent import persistence
+    return {"turns": persistence.list_turns(session_id, limit)}
 
 
 @app.get("/api/usage")

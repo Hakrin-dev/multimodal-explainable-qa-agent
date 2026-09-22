@@ -258,12 +258,15 @@ docker compose -f deploy/docker-compose.yml --env-file .env --project-name mqa u
 
 | # | 需求 | 找谁 | 说明 |
 |---|---|---|---|
-| 1 | `GET /api/docs/{doc_id}/pdf` 静态文档服务 | A（半小时） | 引用溯源 PDF 预览的前提；文件在 `data/docs_raw/` |
-| 2 | `GET /api/trace/{turn_id}` 拉全量树 | A（契约已写未实现） | 断线恢复/历史回放 |
-| 3 | answer.delta 真流式（逐 token） | A（W2 联调时） | 目前整段推送，打字机效果是假流式 |
-| 4 | clarify.options 稳定产出 | A（prompt 调优） | 当前常为空，前端已按兼容空值设计 |
+| ~~1~~ | ~~`GET /api/docs/{doc_id}/pdf`~~ | ✅ **已交付（9/24）**：含 `GET /api/docs` 列表；路径穿越已防护 | — |
+| ~~2~~ | ~~`GET /api/trace/{turn_id}`~~ | ✅ **已交付（9/24）**：另含 `GET /api/trace?session_id=` 列表；跨重启持久化 | — |
+| ~~3~~ | ~~answer.delta 真流式~~ | ✅ **已交付（9/24）**：CHAT/fuse 逐 token 推送（实测 45 增量/轮）；SSE 改为实时队列转发，trace.node 也随到随推 | — |
+| ~~4~~ | ~~clarify.options 稳定产出~~ | ✅ **已修复（9/24）**：意图模板 v0.3 强制 AMBIGUOUS 时给出 2~4 个具体候选（实测：「今年 vs 去年」「2024 vs 2023」） | — |
 | 5 | 文档管理台 API（上传/质量报告/修复） | B（W4 摄入流水线） | 前端文档管理台的对接面，提前对齐格式 |
 | 6 | RAG 知识库重建 | B（按 B_onboarding §1） | RAG 消息演示与 RAG 用例跑分的前提 |
+
+另注（9/24）：Trace 树已真嵌套（`tool_call` 下挂流水线子树 + `llm_call` 孙节点），
+`GET /api/trace/{id}` 回放保持结构，X6 可直接消费；§3.1 描述的形态现在是真实行为。
 
 **别人依赖你的**：Trace 契约冻结（你是评审方）；周五 L1 回归跑分 + 复盘节奏（你主持）；
 演示视频脚本分镜（W5）。技术文档你牵头，A/B 每完成一个中级任务当周交你该章节初稿（PLAN §12 约定）。

@@ -1,7 +1,8 @@
 """Tool registry (PLAN §4.1 工具集) — what the kernel may schedule.
 
-Each tool returns a ToolResult; degraded results carry a reason and the
-kernel decides honest degradation instead of fabrication (架构原则 3).
+ToolSpec.handler 签名：handler(question, trace, parent=None, history=None, **kw)。
+kernel 创建 tool_call span 并作为 parent 传入，流水线步骤嵌套其下
+（契约：tool_call 节点下挂流水线子树）。
 """
 
 from __future__ import annotations
@@ -59,11 +60,13 @@ def default_registry() -> ToolRegistry:
 # ----------------------------------------------------------------- tools --
 
 def _tool_nl2sql(question: str, trace: TraceCollector,
-                 history: list[dict] | None = None, **_: Any) -> ToolResult:
+                 history: list[dict] | None = None, parent=None,
+                 **_: Any) -> ToolResult:
     from ..nl2sql.pipeline import NL2SQLPipeline
     from ..nl2sql.pipeline import NL2SQLResult
 
-    result: NL2SQLResult = NL2SQLPipeline().run(question, trace=trace, history=history)
+    result: NL2SQLResult = NL2SQLPipeline().run(question, trace=trace,
+                                                history=history, parent=parent)
     if result.status == "error":
         return ToolResult(ok=False, data={"errors": result.errors},
                           degraded_reason="SQL 生成失败（自修复后仍不可用）")
@@ -76,17 +79,23 @@ def _tool_nl2sql(question: str, trace: TraceCollector,
     })
 
 
-def _tool_rag(question: str, trace: TraceCollector, **_: Any) -> ToolResult:
+def _tool_rag(question: str, trace: TraceCollector, parent=None, **_: Any) -> ToolResult:
     from ..rag.pipeline import RAGPipeline
 
     try:
-        r = RAGPipeline().run(question, trace=trace)
+        r = RAGPipeline().run(question, trace=trace, parent=parent)
     except FileNotFoundError as e:
         # clean state: embedding model not downloaded — degrade honestly
-        with trace.span("rag_search", NodeType.TOOL_CALL, input=question) as node:
+        if parent is not None:
             from ..core.tracing import NodeStatus as _S
-            trace.finish(node, status=_S.DEGRADED, output=str(e)[:200],
-                         detail={"degraded": True})
+            parent.status = _S.DEGRADED
+            parent.detail["degraded"] = True
+            parent.output = str(e)[:200]
+        else:
+            with trace.span("rag_search", NodeType.TOOL_CALL, input=question) as node:
+                from ..core.tracing import NodeStatus as _S
+                trace.finish(node, status=_S.DEGRADED, output=str(e)[:200],
+                             detail={"degraded": True})
         return ToolResult(ok=False, data={}, degraded_reason="知识库未就绪（嵌入模型未部署）")
     if r.status == "no_context":
         return ToolResult(ok=False, data={"answer": r.answer},

@@ -21,11 +21,20 @@ class Session:
 
 
 class SessionStore:
-    """In-memory sessions with TTL eviction. Thread-safe."""
+    """In-memory sessions with TTL eviction + optional PG durability.
 
-    def __init__(self, ttl_seconds: int = 3600 * 12, max_sessions: int = 500):
+    PG is write-through best-effort (cross-restart continuity); memory stays
+    the hot path. `persist=False` for unit tests.
+    """
+
+    def __init__(self, ttl_seconds: int = 3600 * 12, max_sessions: int = 500,
+                 persist: bool | None = None):
         self.ttl = ttl_seconds
         self.max_sessions = max_sessions
+        if persist is None:
+            from ..core.config import get_settings
+            persist = get_settings().session_persist
+        self.persist = persist
         self._lock = threading.RLock()   # reentrant: set_pending/append call get()
         self._sessions: dict[str, Session] = {}
 
@@ -34,10 +43,20 @@ class SessionStore:
             self._evict()
             s = self._sessions.get(session_id)
             if s is None:
-                s = Session(session_id=session_id)
+                s = self._load_from_pg(session_id) or Session(session_id=session_id)
                 self._sessions[session_id] = s
             s.last_active = time.time()
             return s
+
+    def _load_from_pg(self, session_id: str) -> Session | None:
+        if not self.persist:
+            return None
+        from . import persistence
+        data = persistence.load_session(session_id)
+        if data is None:
+            return None
+        return Session(session_id=session_id, messages=data["messages"],
+                       pending_clarify=data["pending_clarify"])
 
     def history(self, session_id: str, limit: int = 6) -> list[dict]:
         """Last `limit` messages (for intent / rewrite context)."""
@@ -49,10 +68,22 @@ class SessionStore:
             s.messages.append({"role": role, "content": content})
             if len(s.messages) > 40:
                 s.messages = s.messages[-40:]
+            self._flush(s)
 
     def set_pending_clarify(self, session_id: str, payload: dict | None) -> None:
         with self._lock:
-            self.get(session_id).pending_clarify = payload
+            s = self.get(session_id)
+            s.pending_clarify = payload
+            self._flush(s)
+
+    def _flush(self, s: Session) -> None:
+        """Write-through to PG (best-effort, cross-restart durability)."""
+        if not self.persist:
+            return
+        from . import persistence
+        persistence.save_session(s.session_id, s.messages, s.pending_clarify,
+                                 n_turns=len([m for m in s.messages
+                                              if m["role"] == "user"]))
 
     def pop_pending_clarify(self, session_id: str) -> dict | None:
         with self._lock:

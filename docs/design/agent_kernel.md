@@ -62,8 +62,10 @@ question ──► ① intent（LLM 结构化输出，history-aware，JSON 解�
 
 ## 6. W2 待办（在 v1 骨架上增量）
 
-- [ ] 会话/Trace 落 PG（`trace_event` 表 = flat_events 形态，`session` 表）
-- [ ] LLM 真流式 → answer.delta 逐段推送（前端联调时）
+- [x] ~~会话/Trace 落 PG~~（D4 完成：`persistence.py`，trace_turn/trace_event/app_session 三表，best-effort 写入 + 跨重启恢复）
+- [x] ~~LLM 真流式~~（D4 完成：`LLMService.chat_stream`，CHAT/fuse 逐 token；SSE 改实时队列转发，实测 45 增量/轮）
+- [x] ~~GET /api/trace/{id} + /api/docs/{id}/pdf~~（D4 完成，C 的四个需求全部闭环）
+- [x] ~~Trace 嵌套结构修正~~（D4 发现并修复：流水线步骤曾平铺在根下；现在 tool_call 下挂子树，rag 双重包裹已消除）
 - [ ] 槽位矩阵外置配置（`data/` 下 YAML：问题类型→必要槽位→候选选项）
 - [ ] HYBRID 真 DAG（并行子任务 + 依赖编排）
 - [ ] 澄清多轮（>1 次追问）与澄清超时清理

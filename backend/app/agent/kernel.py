@@ -102,6 +102,14 @@ class AgentKernel:
         result.latency_ms = int((time.monotonic() - t0) * 1000)
         result.cost_rmb = _turn_cost(trace)
 
+        # durability: trace tree -> PG (best-effort; enables /api/trace/{id})
+        if self.sessions.persist:
+            from . import persistence
+            persistence.save_turn(trace, session_id, summary={
+                "intent": result.intent, "status": result.status,
+                "latency_ms": result.latency_ms, "cost_rmb": result.cost_rmb,
+                "answer": result.answer[:300]})
+
         # memory bookkeeping: suspend or clear clarify state, then log the turn
         if result.status == "clarify" and self._pending_store:
             self.sessions.set_pending_clarify(session_id, self._pending_store)
@@ -121,24 +129,29 @@ class AgentKernel:
         messages = ([{"role": "system", "content": CHAT_SYSTEM}] + history[-4:]
                     + [{"role": "user", "content": question}])
         with trace.span("chat_generate", NodeType.STEP) as node:
-            resp = self.llm.chat(messages, temperature=0.5, max_tokens=300,
-                                 purpose="agent.chat")
+            resp = None
+            for chunk in self.llm.chat_stream(messages, temperature=0.5,
+                                              max_tokens=300, purpose="agent.chat"):
+                if chunk.delta:
+                    emit("answer.delta", {"text": chunk.delta})
+                if chunk.response is not None:
+                    resp = chunk.response
             _llm_child(trace, node, resp)
-            trace.finish(node, output=resp.content[:200])
+            trace.finish(node, output=(resp.content if resp else "")[:200])
         emit("trace.node", _node_event(trace, node))
-        emit("answer.delta", {"text": resp.content})
-        return TurnResult(question=question, answer=resp.content)
+        return TurnResult(question=question,
+                          answer=resp.content if resp else "")
 
     def _tool_turn(self, trace, emit, question, tool_name,
                    history: list[dict] | None = None) -> TurnResult:
         spec = self.registry.get(tool_name)
         with trace.span(tool_name, NodeType.TOOL_CALL, input=question) as node:
             tr: ToolResult = spec.handler(question=question, trace=trace,
-                                          history=history)
-            status = NodeStatus.OK if tr.ok else NodeStatus.DEGRADED
-            trace.finish(node, status=status,
-                         output=("ok" if tr.ok else tr.degraded_reason)[:200],
-                         detail={"degraded": not tr.ok})
+                                          history=history, parent=node)
+            if node.status == NodeStatus.PENDING:   # tool may have set it
+                node.status = NodeStatus.OK if tr.ok else NodeStatus.DEGRADED
+            node.output = (("ok" if tr.ok else tr.degraded_reason))[:200]
+            node.detail["degraded"] = not tr.ok
         emit("trace.node", _node_event(trace, node))
 
         if not tr.ok:
@@ -200,24 +213,28 @@ class AgentKernel:
 
         with trace.span("fuse", NodeType.FUSE) as node:
             messages = build_fuse_messages(question, sub_results)
-            resp = self.llm.chat(messages, temperature=0.3, max_tokens=500,
-                                 purpose="agent.fuse")
+            resp = None
+            for chunk in self.llm.chat_stream(messages, temperature=0.3,
+                                              max_tokens=500, purpose="agent.fuse"):
+                if chunk.delta:
+                    emit("answer.delta", {"text": chunk.delta})
+                if chunk.response is not None:
+                    resp = chunk.response
             _llm_child(trace, node, resp)
-            trace.finish(node, output=resp.content[:300])
+            trace.finish(node, output=(resp.content if resp else "")[:300])
         emit("trace.node", _node_event(trace, node))
-        emit("answer.delta", {"text": resp.content})
 
         citations = [c for sr in sub_results
                      for c in (sr["result"].get("citations") or [])]
-        return TurnResult(question=question, answer=resp.content,
+        return TurnResult(question=question,
+                          answer=resp.content if resp else "",
                           data={"sub_results": [
                               {"tool": sr["tool"], "question": sr["question"]}
                               for sr in sub_results]},
                           citations=citations)
 
     def _clarify(self, trace, emit, question, ir: IntentResult) -> TurnResult:
-        options = ir.raw.get("options") or {}
-        payload = {"missing_slots": ir.missing_slots, "options": options,
+        payload = {"missing_slots": ir.missing_slots, "options": ir.options,
                    "question": question}
         with trace.span("clarify", NodeType.CLARIFY, input=question) as node:
             trace.finish(node, output=payload, detail=payload)
@@ -225,7 +242,6 @@ class AgentKernel:
         emit("clarify.request", payload)
 
         # suspend: store pending state; next turn the history drives resume
-        # (session_id is set by run() caller context — stored via kernel field)
         self._pending_store = payload
         answer = _clarify_question(ir)
         emit("answer.delta", {"text": answer})
@@ -279,9 +295,8 @@ def _fallback_summary(data: dict) -> str:
 def _clarify_question(ir: IntentResult) -> str:
     slots = "、".join(ir.missing_slots)
     q = f"这个问题还需要补充信息：{slots}。"
-    options = ir.raw.get("options") or {}
-    if options:
-        first = next(iter(options.values()))
+    if ir.options:
+        first = next(iter(ir.options.values()))
         if isinstance(first, list) and first:
             q += "可选：" + " / ".join(str(x) for x in first[:5])
     return q

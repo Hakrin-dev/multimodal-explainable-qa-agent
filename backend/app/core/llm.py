@@ -35,7 +35,7 @@ def _store_path(settings: Settings) -> Path:
 Role = Literal["system", "user", "assistant"]
 
 # Bump when prompt templates change -> invalidates stale cache entries.
-PROMPT_TEMPLATE_VERSION = "v0.2-w1-d2"
+PROMPT_TEMPLATE_VERSION = "v0.3-w1-d4"
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +68,14 @@ class LLMResponse:
 
 
 Message = dict  # {"role": ..., "content": ...}
+
+
+@dataclass
+class StreamChunk:
+    """chat_stream yield type: text deltas, with the final LLMResponse attached
+    to the last chunk (usage/accounting complete)."""
+    delta: str = ""
+    response: LLMResponse | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +247,23 @@ class MockProvider:
         time.sleep(0.001)  # shape parity with real providers
         return content, usage
 
+    def chat_stream(self, model: str, messages: Sequence[Message],
+                    params: dict) -> "Iterator[tuple[str, Usage | None]]":
+        """Yield (delta, usage); usage is None until the final chunk."""
+        t0 = time.monotonic()
+        if self._scripted:
+            content = self._scripted[min(self._i, len(self._scripted) - 1)]
+            self._i += 1
+        else:
+            content = self._handler(messages, params)
+        usage = Usage(
+            prompt_tokens=sum(len(str(m.get("content", ""))) for m in messages) // 4,
+            completion_tokens=len(content) // 4,
+        )
+        for j in range(0, len(content), 8):
+            yield content[j:j + 8], None
+        yield "", usage
+
 
 class OpenAICompatProvider:
     """Thin wrapper over the openai SDK; works for DeepSeek / Qwen / SiliconFlow."""
@@ -276,6 +301,33 @@ class OpenAICompatProvider:
             cached_prompt_tokens=cached,
         )
         return content, usage
+
+    def chat_stream(self, model: str, messages: Sequence[Message],
+                    params: dict) -> "Iterator[tuple[str, Usage | None]]":
+        kwargs: dict[str, Any] = dict(
+            model=model,
+            messages=[{"role": m["role"], "content": m["content"]} for m in messages],
+            timeout=params.get("timeout"),
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+        if "temperature" in params and params["temperature"] is not None:
+            kwargs["temperature"] = params["temperature"]
+        if params.get("max_tokens"):
+            kwargs["max_tokens"] = params["max_tokens"]
+        usage: Usage | None = None
+        for chunk in self.client.chat.completions.create(**kwargs):
+            u = getattr(chunk, "usage", None)
+            if u is not None:
+                extra = getattr(u, "model_extra", None) or {}
+                usage = Usage(
+                    prompt_tokens=u.prompt_tokens or 0,
+                    completion_tokens=u.completion_tokens or 0,
+                    cached_prompt_tokens=int(extra.get("prompt_cache_hit_tokens", 0) or 0),
+                )
+            if chunk.choices and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content, None
+        yield "", usage
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +421,46 @@ class LLMService:
         self.store.log_usage(provider=pname, model=model, purpose=purpose, usage=usage,
                              cost_rmb=cost, app_cache_hit=False, latency_ms=latency_ms)
         return resp
+
+    def chat_stream(
+        self,
+        messages: Sequence[Message],
+        *,
+        model: str | None = None,
+        provider: str | None = None,
+        temperature: float = 0.5,
+        max_tokens: int | None = None,
+        purpose: str = "",
+    ) -> "Iterator[StreamChunk]":
+        """Real streaming. Yields StreamChunk(delta=...) per token group; the
+        final chunk carries the complete LLMResponse (usage + cost + ledger).
+        Streams bypass the response cache by design."""
+        pname = (provider or self.settings.llm_provider).lower()
+        cfg = self.settings.provider_config(pname)
+        model = model or (self.settings.llm_model or cfg.default_model)
+        params: dict[str, Any] = {
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "response_json": False,
+        }
+        t0 = time.monotonic()
+        parts: list[str] = []
+        final_usage = Usage()
+        for delta, usage in self._provider(pname).chat_stream(model, messages, params):
+            if delta:
+                parts.append(delta)
+                yield StreamChunk(delta=delta)
+            if usage is not None:
+                final_usage = usage
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        cost = 0.0 if pname == "mock" else self._cost(cfg, final_usage)
+        resp = LLMResponse(content="".join(parts), model=model, provider=pname,
+                           usage=final_usage, cost_rmb=cost, cache_hit=False,
+                           latency_ms=latency_ms)
+        self.store.log_usage(provider=pname, model=model, purpose=purpose,
+                             usage=final_usage, cost_rmb=cost, app_cache_hit=False,
+                             latency_ms=latency_ms)
+        yield StreamChunk(response=resp)
 
     # -- reporting ----------------------------------------------------------
 

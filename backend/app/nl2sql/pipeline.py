@@ -89,20 +89,26 @@ class NL2SQLPipeline:
     # ------------------------------------------------------------------ api
 
     def run(self, question: str, trace: TraceCollector | None = None,
-            history: list[dict] | None = None) -> NL2SQLResult:
+            history: list[dict] | None = None,
+            parent=None) -> NL2SQLResult:
+        """parent: the kernel's tool_call node — pipeline steps nest under it
+        (contract: tool_call 节点下挂流水线子树). Standalone calls pass None."""
         trace = trace or TraceCollector(question=question)
         t0 = time.monotonic()
         result = NL2SQLResult(question=question)
 
+        def _p(default=None):
+            return parent if parent is not None else default
+
         # ① rewrite (term linking)
-        with trace.span("rewrite", NodeType.STEP, input=question) as node:
+        with trace.span("rewrite", NodeType.STEP, parent=_p(), input=question) as node:
             rw = rewriter.rewrite(question)
             result.rewritten = rw.question
             trace.finish(node, output=rw.question,
                          detail={"rewrites": rw.rewrites} if rw.rewrites else {})
 
         # ② schema context (W1: full 11-table DDL + samples; W3: compressed)
-        with trace.span("schema_context", NodeType.STEP, input=None) as node:
+        with trace.span("schema_context", NodeType.STEP, parent=_p(), input=None) as node:
             tables = schema_meta.load_table_meta()
             schema_ctx = schema_meta.build_schema_context(tables, with_samples=True)
             schema_dict = {t.name: {c.name: c.type for c in t.columns} for t in tables}
@@ -114,7 +120,7 @@ class NL2SQLPipeline:
         top_n = topn_requirement(result.rewritten or question)
         for round_no in range(1, MAX_REPAIR_ROUNDS + 1):
             gen = self._generate(trace, schema_ctx, result.rewritten or question,
-                                 history, feedback)
+                                 history, feedback, parent=_p())
             result.analysis = gen.get("analysis", result.analysis)
             last_sql = gen.get("sql", "")
             if not last_sql:
@@ -125,14 +131,16 @@ class NL2SQLPipeline:
                 result.latency_ms = int((time.monotonic() - t0) * 1000)
                 return result
 
-            vres = self._validate(trace, last_sql, SQLValidator(schema_dict, self.max_rows))
+            vres = self._validate(trace, last_sql, SQLValidator(schema_dict, self.max_rows),
+                                  parent=_p())
 
             # TOP-N heuristic (mt-002 lesson): question demands 前N but SQL lacks
             # LIMIT — not a syntax error, only detectable against the question text
             if vres.ok and top_n and not re.search(r"\bLIMIT\b", vres.sql, re.I):
                 vres = vres.__class__(ok=False, errors=[
                     f"问题要求前 {top_n} 个结果，但 SQL 缺少 LIMIT {top_n}，请修正"])
-                with trace.span("sql_validate", NodeType.STEP, input=last_sql) as hnode:
+                with trace.span("sql_validate", NodeType.STEP, parent=_p(),
+                                input=last_sql) as hnode:
                     trace.finish(hnode, status=NodeStatus.ERROR, detail={
                         "sql": last_sql, "valid": False, "heuristic": "topn-limit",
                         "errors": vres.errors})
@@ -143,7 +151,7 @@ class NL2SQLPipeline:
                 result.errors.extend(vres.errors)
                 continue
 
-            eres = self._execute(trace, vres.sql)
+            eres = self._execute(trace, vres.sql, parent=_p())
             if not eres.ok:
                 result.repair_rounds = round_no
                 feedback = f"SQL: {vres.sql}\n执行错误: {eres.error[:500]}"
@@ -162,7 +170,7 @@ class NL2SQLPipeline:
 
         # ⑥ summarize
         if result.status == "ok":
-            self._summarize(trace, result)
+            self._summarize(trace, result, parent=_p())
 
         result.trace = trace.to_dict()
         result.latency_ms = int((time.monotonic() - t0) * 1000)
@@ -171,9 +179,10 @@ class NL2SQLPipeline:
     # ------------------------------------------------------------- internals
 
     def _generate(self, trace: TraceCollector, schema_ctx: str, question: str,
-                  history: list[dict] | None, feedback: str | None) -> dict:
+                  history: list[dict] | None, feedback: str | None,
+                  parent=None) -> dict:
         with trace.span("sql_gen" if not feedback else "sql_repair",
-                        NodeType.STEP, input=question) as node:
+                        NodeType.STEP, parent=parent, input=question) as node:
             messages = prompts.build_messages(schema_ctx, question, history, feedback)
             resp = self.llm.chat(messages, temperature=0.0,
                                  purpose="nl2sql.generate")
@@ -207,16 +216,17 @@ class NL2SQLPipeline:
             sql = ""
         return {"analysis": analysis, "sql": sql}
 
-    def _validate(self, trace: TraceCollector, sql: str, validator: SQLValidator):
-        with trace.span("sql_validate", NodeType.STEP, input=sql) as node:
+    def _validate(self, trace: TraceCollector, sql: str, validator: SQLValidator,
+                  parent=None):
+        with trace.span("sql_validate", NodeType.STEP, parent=parent, input=sql) as node:
             vres = validator.validate(sql)
             trace.finish(node, output=vres.sql or None, status=(
                 NodeStatus.OK if vres.ok else NodeStatus.ERROR),
                 detail={"sql": sql, "valid": vres.ok, "errors": vres.errors})
             return vres
 
-    def _execute(self, trace: TraceCollector, sql: str):
-        with trace.span("sql_execute", NodeType.STEP, input=sql) as node:
+    def _execute(self, trace: TraceCollector, sql: str, parent=None):
+        with trace.span("sql_execute", NodeType.STEP, parent=parent, input=sql) as node:
             eres = executor.execute_sql(sql, self.max_rows, self.settings.sql_timeout_ms)
             trace.finish(node, status=NodeStatus.OK if eres.ok else NodeStatus.ERROR,
                          detail={"row_count": eres.row_count,
@@ -224,8 +234,9 @@ class NL2SQLPipeline:
                                  **({"error": eres.error[:300]} if not eres.ok else {})})
             return eres
 
-    def _summarize(self, trace: TraceCollector, result: NL2SQLResult) -> None:
-        with trace.span("summarize", NodeType.STEP, input=None) as node:
+    def _summarize(self, trace: TraceCollector, result: NL2SQLResult,
+                   parent=None) -> None:
+        with trace.span("summarize", NodeType.STEP, parent=parent, input=None) as node:
             messages = prompts.build_summarize_messages(
                 result.question, result.sql, result.columns, result.rows)
             resp = self.llm.chat(messages, temperature=0.3, max_tokens=300,

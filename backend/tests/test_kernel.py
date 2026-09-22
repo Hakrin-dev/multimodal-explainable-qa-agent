@@ -54,7 +54,7 @@ def _stub_registry(nl2sql_result=None, rag_result=None) -> ToolRegistry:
 def _kernel(tmp_path, scripted, **tool_kwargs) -> AgentKernel:
     return AgentKernel(llm=_llm(tmp_path, scripted),
                        registry=_stub_registry(**tool_kwargs),
-                       sessions=SessionStore())
+                       sessions=SessionStore(persist=False))
 
 
 # ---------------------------------------------------------------- routing --
@@ -205,3 +205,16 @@ def test_intent_heuristic_keywords():
     assert _heuristic("2025 年销售冠军是谁？总结他的方法论") == "HYBRID"
     assert _heuristic("销量前十的曲目") == "DB_QUERY"
     assert _heuristic("你好呀") == "CHAT"
+
+
+def test_chat_streaming_multiple_deltas(tmp_path):
+    """Real streaming: CHAT branch emits >1 answer.delta whose concat == answer."""
+    k = _kernel(tmp_path, [
+        _intent({"intent": "CHAT", "confidence": 0.9}),
+        "这是一段足够长的回答文本用于验证流式增量推送会拆分成多个分片。",
+    ])
+    deltas = []
+    r = k.run("你好", on_event=lambda e, d: deltas.append((e, d)) if e == "answer.delta" else None)
+    texts = [d["text"] for _, d in deltas]
+    assert len(texts) > 1, "expected multiple delta chunks"
+    assert "".join(texts) == r.answer

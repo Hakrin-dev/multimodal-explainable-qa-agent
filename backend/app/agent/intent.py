@@ -26,6 +26,7 @@ class IntentResult:
     confidence: float = 0.5
     slots: dict[str, Any] = field(default_factory=dict)
     missing_slots: list[str] = field(default_factory=list)
+    options: dict[str, list] = field(default_factory=dict)
     sub_tasks: list[str] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
     fallback_used: bool = False
@@ -87,6 +88,7 @@ class IntentClassifier:
             confidence=float(data.get("confidence", 0.5) or 0.5),
             slots=data.get("slots") or {},
             missing_slots=data.get("missing_slots") or [],
+            options=data.get("options") or {},
             sub_tasks=data.get("sub_tasks") or [],
             raw=data,
         )

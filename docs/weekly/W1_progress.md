@@ -93,7 +93,20 @@
   - 修死锁：SessionStore 嵌套锁 → RLock（faulthandler 定位）；SSE 事件顺序合规
   - 测试 58 通过（含 10 个内核用例）
 
-- 9/24: （待更新）
+- 9/24（D4，A）：**C 的四项后端需求全部闭环 + 持久化落地**
+  - `GET /api/docs` + `/api/docs/{doc_id}/pdf`（路径穿越防护）；`GET /api/trace/{turn_id}` +
+    `?session_id=` 列表（契约 §4.1 从纸面到实现）
+  - **Trace/会话 PG 持久化**（`persistence.py`：trace_turn/trace_event/app_session，
+    best-effort 写入，SessionStore 跨实例恢复实测通过）
+  - **LLM 真流式**（`chat_stream`：CHAT/fuse 逐 token，实测 45 增量/轮；SSE 改实时队列转发）
+  - **clarify.options 修复**：意图模板 v0.3 强制 AMBIGUOUS 给 2~4 个具体候选（实测
+    「今年 vs 去年」「2024 vs 2023」），C 的按钮交互从降级兼容变为直接可用
+  - **发现并修复 Trace 嵌套 bug**：流水线步骤曾平铺在根下、rag_search 双重包裹；
+    现在 tool_call 下挂流水线子树 + llm_call 孙节点，回放保真（X6 可直接消费）
+  - 顺手：psycopg JSONB 自动解析兼容、宿主机过夜重启后栈自愈
+  - 测试 63 通过（+持久化集成 4 +流式分片 1）
+
+- 9/25（D5，待办）：契约冻结会（Trace/摄入/eval 三份）+ L1 回归 + 15min 复盘
 
 ---
 

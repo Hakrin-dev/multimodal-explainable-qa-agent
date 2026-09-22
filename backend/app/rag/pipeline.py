@@ -72,14 +72,23 @@ class RAGPipeline:
     # ------------------------------------------------------------------ api
 
     def run(self, question: str, trace: TraceCollector | None = None,
-            top_k: int = 6) -> RAGResult:
+            top_k: int = 6, parent=None) -> RAGResult:
+        """parent: kernel's tool_call node. When given, this pipeline's steps
+        nest under it directly (no double rag_search wrapping)."""
         trace = trace or TraceCollector(question=question)
         t0 = time.monotonic()
         result = RAGResult(question=question)
         self.ensure_loaded()
 
-        # ① retrieve
-        with trace.span("rag_search", NodeType.TOOL_CALL, input=question) as node:
+        # ① retrieve — own tool_call span only when standalone (no double wrap)
+        node = None
+        if parent is None:
+            cm = trace.span("rag_search", NodeType.TOOL_CALL, input=question)
+        else:
+            from contextlib import nullcontext
+            cm = nullcontext(parent)
+        with cm as n:
+            node = n
             hits: list[ChunkHit] = self.retriever.search(question, top_k=top_k)
             result.citations = [h.citation() for h in hits]
             result.hits = [
@@ -88,9 +97,13 @@ class RAGPipeline:
                  "text": h.chunk.text[:200]}
                 for h in hits
             ]
-            trace.finish(node, output=f"{len(hits)} chunks",
-                         detail={"citations": result.citations[:8],
-                                 "hit_count": len(hits)})
+            if parent is None:   # kernel finishes its own node later
+                trace.finish(node, output=f"{len(hits)} chunks",
+                             detail={"citations": result.citations[:8],
+                                     "hit_count": len(hits)})
+            else:                # enrich the kernel's node with citations
+                node.detail.setdefault("citations", result.citations[:8])
+                node.detail["hit_count"] = len(hits)
 
         if not hits:
             result.status = "no_context"
@@ -100,7 +113,7 @@ class RAGPipeline:
             return result
 
         # ② cited generation
-        with trace.span("rag_generate", NodeType.STEP) as node:
+        with trace.span("rag_generate", NodeType.STEP, parent=parent) as node:
             chunks_payload = [
                 {"idx": i + 1, "doc": h.chunk.doc_name, "page": h.chunk.page_start,
                  "breadcrumb": " > ".join(h.chunk.breadcrumb), "text": h.chunk.text}
