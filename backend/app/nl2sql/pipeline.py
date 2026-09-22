@@ -268,6 +268,13 @@ def _guess_chart_hint(columns: list[str], rows: list[list]) -> str | None:
 
 
 def _is_num(v: Any) -> bool:
+    """Numeric check covering Decimal (psycopg) & numpy types, not just int/float."""
+    if v is None:
+        return False
     if isinstance(v, (int, float)):
         return True
-    return isinstance(v, str) and bool(re.match(r"^-?[\d,.]+$", v))
+    try:
+        float(v)
+        return True
+    except (TypeError, ValueError):
+        return False

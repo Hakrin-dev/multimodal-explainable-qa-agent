@@ -132,3 +132,12 @@ def test_topn_no_false_positive_on_time_span():
     from app.nl2sql.pipeline import topn_requirement
     assert topn_requirement("前一年的销售额是多少") is None
     assert topn_requirement("销量前十的曲目") == 10
+
+
+def test_chart_hint_decimal_columns():
+    """Regression (W2-D4): psycopg returns Decimal — chart heuristic must
+    still recognize numeric columns (demo scenario 1 'no chart hint')."""
+    from decimal import Decimal
+    from app.nl2sql.pipeline import _guess_chart_hint
+    assert _guess_chart_hint(["name", "total_quantity"],
+                             [["The Trooper", Decimal("5")], ["Eruption", Decimal("4")]]) == "bar"
