@@ -88,6 +88,9 @@ class Settings(BaseSettings):
     # ---- agent kernel ----
     session_persist: bool = True   # sessions & turns to PG (best-effort)
 
+    # ---- schema linking (W3 #4/#5) ----
+    schema_linking: bool = True    # compressed schema + join paths (ablation: 0)
+
     # ---- nl2sql pipeline ----
     sql_max_rows: int = 50
     sql_timeout_ms: int = 5000

@@ -143,10 +143,19 @@ PROJECT_DDL = [
     """,
     "CREATE INDEX IF NOT EXISTS biz_term_alias_gin ON biz_term USING GIN (aliases);",
     # ---- business knowledge lives in the DB, not in prompts (架构原则 1：知识外置).
-    # schema_meta.build_schema_context() reads these into the semi-static prompt layer.
+    # schema_meta.build_schema_context() reads these into the semi-static prompt layer;
+    # Chinese comments also bridge the cross-lingual recall gap (W3 #4).
     """COMMENT ON TABLE track IS '曲目表。业务规则：同名曲目（不同专辑/版本）视为同一首——统计销量、排名、数量（多少首）时一律按 name 聚合或去重；判断「从未被购买」以名称为准：该名称下任一版本被购买过即视为已购买。';""",
     """COMMENT ON TABLE invoiceline IS '订单明细表，销量(quantity)与销售额(unitprice*quantity)的事实来源。';""",
     """COMMENT ON TABLE invoice IS '发票表，total 为含税总额；客户维度分析优先关联 customer 表而非 billing 字段。';""",
+    """COMMENT ON TABLE artist IS '艺术家/歌手表（音乐作品的创作者）。';""",
+    """COMMENT ON TABLE album IS '专辑表，每张专辑属于一位艺术家。';""",
+    """COMMENT ON TABLE genre IS '音乐曲风分类表（摇滚、爵士等）。';""",
+    """COMMENT ON TABLE mediatype IS '媒体格式表（MPEG、AAC 等）。';""",
+    """COMMENT ON TABLE playlist IS '歌单表。';""",
+    """COMMENT ON TABLE playlisttrack IS '歌单-曲目关联表（多对多）。';""",
+    """COMMENT ON TABLE employee IS '员工表（销售支持专员、经理、总经理）。';""",
+    """COMMENT ON TABLE customer IS '客户表（含国家/城市/支持专员归属）。';""",
 ]
 
 

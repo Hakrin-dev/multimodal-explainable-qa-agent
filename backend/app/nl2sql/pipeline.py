@@ -107,12 +107,28 @@ class NL2SQLPipeline:
             trace.finish(node, output=rw.question,
                          detail={"rewrites": rw.rewrites} if rw.rewrites else {})
 
-        # ② schema context (W1: full 11-table DDL + samples; W3: compressed)
+        # ② schema context: W3 #4 compression via Schema Linking (ablation-capable)
         with trace.span("schema_context", NodeType.STEP, parent=_p(), input=None) as node:
             tables = schema_meta.load_table_meta()
-            schema_ctx = schema_meta.build_schema_context(tables, with_samples=True)
+            if self.settings.schema_linking:
+                from .schema_linking import SchemaLinker, build_compressed_context
+                linking = SchemaLinker().link(result.rewritten or question)
+                schema_ctx = build_compressed_context(linking.selected)
+                if linking.join_paths:
+                    schema_ctx += ("\n\n【Join 路径（只允许使用这些关联）】\n"
+                                   + "\n".join(linking.join_paths))
+                full_ctx = schema_meta.build_schema_context(tables, with_samples=True)
+                trace.finish(node, output=f"{len(linking.selected)}/{len(tables)} tables",
+                             detail={
+                                 "selected_tables": linking.selected,
+                                 "recalled": linking.recalled,
+                                 "join_paths": linking.join_paths,
+                                 "tokens_full": len(full_ctx) // 4,
+                                 "tokens_compressed": len(schema_ctx) // 4})
+            else:
+                schema_ctx = schema_meta.build_schema_context(tables, with_samples=True)
+                trace.finish(node, output=f"{len(tables)} tables (linking off)")
             schema_dict = {t.name: {c.name: c.type for c in t.columns} for t in tables}
-            trace.finish(node, output=f"{len(tables)} tables loaded")
 
         # ③④⑤ generate / validate / execute with repair loop
         feedback: str | None = None
