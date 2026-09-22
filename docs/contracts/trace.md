@@ -44,6 +44,23 @@ turn (root: question)
 | `slots` / `missing_slots[]` / `options{}` | clarify | 槽位状态 |
 | `cost_rmb` / `model` / `tokens{}` | llm_call | 用量记账（与 SQLite 账本冗余，便于单轮成本归因） |
 
+### 3.1 RAG Citation 字段类型
+
+`citations[]` 的字段集合固定如下：
+
+| 字段 | 类型 | 约定 |
+|---|---|---|
+| `doc` | string | 文档的人类可读名称 |
+| `doc_id` | string | 稳定文档 ID |
+| `page` | integer | 1-based，当前取命中 chunk 的 `page_start` |
+| `breadcrumb` | string | 由 IR 的 `list[str]` 使用 `" > "` 拼接 |
+| `snippet` | string | 命中 chunk 文本前 120 个字符 |
+| `score` | number | RRF 融合分数，输出时保留 4 位小数 |
+
+v0.1 Citation 支持 PDF 页级定位，不承诺页内矩形框选。当前 `kb_chunk`
+没有持久化 `block_ids` 或 `bbox`；如后续增加精确高亮，需要同步修改
+Ingestion IR、数据库迁移、Citation 契约、测试和 C 端渲染，不能单方添加字段。
+
 ## 4. 传输与持久化
 
 ### 4.1 HTTP 拉取
@@ -115,5 +132,6 @@ turn (root: question)
 |---|---|---|---|
 | 0.1 | 2026-09-21 | A 起草初稿 | 待 B/C 评审 → 周五冻结 |
 | 0.1+ | 2026-09-22 | 补充 §4.2 SSE 事件格式初稿（7 类事件，供 C 前端 W2 开发） | 待评审 |
+| 0.1+B | 2026-09-22 | B（sxy）完成 RAG Citation 评审；六字段实现与测试一致，明确字段类型和页级定位边界 | B 已评审；整体仍待 A 处理两个阻塞项 |
 | 0.1+C | 2026-09-23 | C 按运行时代码完成前端契约评审；修正实际 payload，提出 `turn_id` 与 Trace 拉取端点两项冻结条件 | C 已评审，待 A 处理阻塞项 |
 | 0.2 | （周五） | B/C 评审意见合并后冻结 | 待定 |
