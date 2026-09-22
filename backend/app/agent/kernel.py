@@ -25,6 +25,8 @@ from ..core.tracing import NodeStatus, NodeType, TraceCollector
 from .intent import IntentClassifier, IntentResult
 from .memory import SessionStore, get_session_store
 from .planner import Planner, build_fuse_messages
+from .rewrite import CoreferenceRewriter
+from .slots import SlotMatrix
 from .tools import ToolRegistry, ToolResult, default_registry
 
 EventCallback = Callable[[str, dict], None]
@@ -38,6 +40,7 @@ class TurnResult:
     answer: str = ""
     intent: str = ""
     status: str = "ok"            # ok | clarify | degraded | error
+    rewritten: str = ""           # 指代消解后的自包含问题（多轮改写对照，前端展示）
     data: dict[str, Any] = field(default_factory=dict)     # tool payloads
     citations: list[dict] = field(default_factory=list)
     clarify: dict[str, Any] = field(default_factory=dict)
@@ -47,14 +50,18 @@ class TurnResult:
 
 
 class AgentKernel:
+    CLARIFY_TTL_SECONDS = 600   # stale clarifications don't shadow fresh turns
     def __init__(self, llm: LLMService | None = None,
                  registry: ToolRegistry | None = None,
-                 sessions: SessionStore | None = None):
+                 sessions: SessionStore | None = None,
+                 slot_matrix: SlotMatrix | None = None):
         self.llm = llm or get_llm_service()
         self.registry = registry or default_registry()
         self.sessions = sessions or get_session_store()
         self.classifier = IntentClassifier(self.llm)
         self.planner = Planner(self.llm)
+        self.rewriter = CoreferenceRewriter(self.llm)
+        self.slots = slot_matrix if slot_matrix is not None else SlotMatrix.load()
 
     # ------------------------------------------------------------------ api
 
@@ -67,13 +74,27 @@ class AgentKernel:
         session = self.sessions.get(session_id)
         history = session.messages[-6:]
         pending = session.pending_clarify
+        # clarify TTL: stale suspensions don't shadow fresh questions
+        if pending and isinstance(pending, dict) and pending.get("_ts"):
+            if time.time() - pending["_ts"] > self.CLARIFY_TTL_SECONDS:
+                pending = None
+                self.sessions.set_pending_clarify(session_id, None)
 
         emit("turn.start", {"turn_id": trace.turn_id, "question": question,
                              "session_id": session_id,
-                            "resumed_clarify": bool(pending)})
+                             "resumed_clarify": bool(pending)})
 
-        # ① intent (history-aware; a clarify reply resolves to a full intent)
-        with trace.span("intent", NodeType.INTENT, input=question) as node:
+        # ⓪ coreference rewrite (§4.6): follow-up → standalone question
+        rw = self.rewriter.rewrite(question, history)
+        if rw.changed:
+            with trace.span("rewrite", NodeType.STEP, input=question) as node:
+                trace.finish(node, output=rw.question,
+                             detail={"rewrites": rw.rewrites, "method": "coreference"})
+            emit("trace.node", _node_event(trace, node))
+        effective_question = rw.question
+
+        # ① intent (on the standalone question; history still available)
+        with trace.span("intent", NodeType.INTENT, input=effective_question) as node:
             ir: IntentResult = self.classifier.classify(question, history)
             trace.finish(node, output={"intent": ir.intent,
                                        "confidence": ir.confidence,
@@ -82,23 +103,45 @@ class AgentKernel:
                                  "missing_slots": ir.missing_slots})
         emit("trace.node", _node_event(trace, node))
 
-        # ② route
+        # ①' slot matrix (§4.7, deterministic): pattern rules may override an
+        # over-confident DB_QUERY into clarify, or enrich clarify options
+        verdict = self.slots.check(effective_question)
+        if verdict.triggered and verdict.missing:
+            if ir.intent in ("DB_QUERY", "HYBRID") and not ir.needs_clarification:
+                ir = IntentResult(intent="AMBIGUOUS", confidence=0.9,
+                                  missing_slots=verdict.missing,
+                                  options=verdict.options,
+                                  raw={"source": "slot_matrix", "hint": verdict.intent_hint})
+                with trace.span("slot_check", NodeType.STEP,
+                                input=effective_question) as snode:
+                    trace.finish(snode, status=NodeStatus.OK, output={
+                        "override": "DB_QUERY->AMBIGUOUS",
+                        "missing_slots": verdict.missing},
+                        detail={"rule": verdict.intent_hint})
+                emit("trace.node", _node_event(trace, snode))
+            elif ir.needs_clarification:
+                for slot, opts in verdict.options.items():
+                    if opts and not ir.options.get(slot):
+                        ir.options[slot] = opts
+
+        # ② route (downstream gets the standalone question)
         if ir.needs_clarification:
-            result = self._clarify(trace, emit, question, ir)
+            result = self._clarify(trace, emit, effective_question, ir)
         elif ir.intent == "CHAT":
-            result = self._chat(trace, emit, question, history)
+            result = self._chat(trace, emit, effective_question, history)
         elif ir.intent == "DB_QUERY":
-            result = self._tool_turn(trace, emit, question, "nl2sql", history)
+            result = self._tool_turn(trace, emit, effective_question, "nl2sql", history)
         elif ir.intent == "DOC_QUERY":
-            result = self._tool_turn(trace, emit, question, "rag_search", history)
+            result = self._tool_turn(trace, emit, effective_question, "rag_search", history)
         elif ir.intent == "HYBRID":
-            result = self._hybrid(trace, emit, question)
+            result = self._hybrid(trace, emit, effective_question)
         else:  # unknown — honest failure
             result = TurnResult(question=question, status="error",
                                 answer="未能识别该请求的意图。")
             result.intent = ir.intent
 
         result.intent = ir.intent
+        result.rewritten = effective_question if rw.changed else ""
         result.trace = trace.to_dict()
         result.latency_ms = int((time.monotonic() - t0) * 1000)
         result.cost_rmb = _turn_cost(trace)
@@ -113,6 +156,7 @@ class AgentKernel:
 
         # memory bookkeeping: suspend or clear clarify state, then log the turn
         if result.status == "clarify" and self._pending_store:
+            self._pending_store["_ts"] = time.time()   # TTL anchor (§4.7)
             self.sessions.set_pending_clarify(session_id, self._pending_store)
             self._pending_store = None
         elif result.status != "clarify":

@@ -224,6 +224,7 @@ def _result_dict(r: NL2SQLResult) -> dict[str, Any]:
 def _turn_dict(r) -> dict[str, Any]:
     return {
         "question": r.question,
+        "rewritten": r.rewritten,
         "answer": r.answer,
         "intent": r.intent,
         "status": r.status,

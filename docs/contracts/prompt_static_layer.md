@@ -36,10 +36,11 @@ Qwen 隐式上下文缓存同理）。三层结构保证最大公共前缀稳定
 | 4 | `agent.plan` | `agent/planner.py::PLAN_STATIC` | agent.plan | ✅ 冻结 |
 | 5 | `agent.fuse` | `agent/planner.py::FUSE_STATIC` | agent.fuse | ✅ 冻结 |
 | 6 | `rag.generate` | `prompts/rag.py::RAG_GENERATE_STATIC` | rag.generate | ✅ 冻结 |
+| 7 | `agent.rewrite` | `agent/rewrite.py::REWRITE_STATIC` | agent.rewrite | ✅ 冻结（W2-D2 注册：指代消解/省略补全，失败回退原问题） |
 
 **新家族注册协议**（B/C 新增 Prompt 时遵守）：静态层文本放 `core/prompts/` 或对应模块顶部常量；
 在注册表追加一行；purpose 命名 `<域>.<动作>`；首次合入即视为冻结（此后走追加规则）。
-B 待注册：`rag.query_rewrite`（W2）、`rag.factcheck`（W3）；C 无（前端不写 Prompt）。
+B 待注册：`rag.query_rewrite`（W2，注意与 agent.rewrite 职责区分：前者为检索优化、后者为多轮自包含化）、`rag.factcheck`（W3）；C 无（前端不写 Prompt）。
 
 ### 3.x 历史候选（已被 v1.0 取代，过程记录）
 

@@ -66,6 +66,22 @@ question ──► ① intent（LLM 结构化输出，history-aware，JSON 解�
 - [x] ~~LLM 真流式~~（D4 完成：`LLMService.chat_stream`，CHAT/fuse 逐 token；SSE 改实时队列转发，实测 45 增量/轮）
 - [x] ~~GET /api/trace/{id} + /api/docs/{id}/pdf~~（D4 完成，C 的四个需求全部闭环）
 - [x] ~~Trace 嵌套结构修正~~（D4 发现并修复：流水线步骤曾平铺在根下；现在 tool_call 下挂子树，rag 双重包裹已消除）
-- [ ] 槽位矩阵外置配置（`data/` 下 YAML：问题类型→必要槽位→候选选项）
-- [ ] HYBRID 真 DAG（并行子任务 + 依赖编排）
-- [ ] 澄清多轮（>1 次追问）与澄清超时清理
+- [x] ~~槽位矩阵外置配置~~（W2-D2 完成：`data/slot_matrix.json` + `agent/slots.py`；
+      模式规则 + `satisfied_by` 证据正则；过度自信 DB_QUERY 的确定性覆写 + AMBIGUOUS 选项增强；
+      新领域 = 改 JSON 零代码）
+- [x] ~~指代消解改写~~（W2-D2 完成：`agent/rewrite.py`，`agent.rewrite` 家族已注册；
+      改写对照进 Trace detail.rewrites + TurnResult.rewritten 供 UI 展示）
+- [x] ~~澄清超时清理~~（W2-D2 完成：挂起态带 `_ts`，TTL 600s，过期不再遮蔽新问题）
+- [ ] HYBRID 真 DAG（并行子任务 + 依赖编排）（W4 前完成）
+- [ ] 澄清多轮（>1 次追问）
+
+## 7. W2-D2 新增执行流（v1.1）
+
+```
+question → [history 非空?] → ⓪ 指代消解改写（trace: rewrite, 对照入档）
+         → ① intent（对自包含问题分类）
+         → ①' 槽位矩阵（模式命中 + satisfied_by 校验）
+              ├─ LLM 过度自信(DB_QUERY/HYBRID) + 缺槽 → 覆写 AMBIGUOUS（trace: slot_check）
+              └─ LLM 已 AMBIGUOUS → 矩阵选项补强
+         → ② 路由（下游全部使用自包含问题）
+```
