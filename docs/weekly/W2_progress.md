@@ -92,3 +92,92 @@ C 前端联调收尾（12s 超时修复）——均无提交，已顺延进 W3 �
 
 ⚠ 团队进度提示：B（摄入流水线 v1：质量检测器/复杂度评分/MinerU/坏文档）与 C（前端联调 +
 12s 超时修复）的 W2 主交付尚未见提交——W2 剩余 4 天，建议周五复盘会前各自更新状态。
+
+
+## B 增量（2026-09-23 实际执行；基于 cd45a07）
+
+> 上文为 A 的排期周报；保留其历史风险记录。本节只更新本次实测完成的子交付。
+
+### 只读检查与执行计划
+
+- `pwd`：`/home/sxy/projects/multimodal-explainable-qa-agent`；`git status`：main、
+  与 origin/main 一致、工作区干净；`git diff --check`：通过。
+- 最近五提交：`cd45a07` / `8a3542d` / `c374166` / `15eaad1` / `c91bb16`。
+- 已读 README、PLAN、B onboarding、W1/W2 周报和 IR/Trace/eval 三契约，检查
+  ingestion、rag、摄入/生成脚本、用例与 runner、测试、配置和部署文件；
+  已用 rg 搜索 B、W2、at risk、质量、复杂度、embedding、BGE、rerank、TODO、未完成、阻塞。
+- 当前已交付：PyMuPDF/切片/混合检索 v0、四份文档、八条 RAG 用例、IR/Citation 契约冻结。
+  基础闭环由 A 代劳，B 新增产品运营文档；W1 旧阻塞表须按 W1 末冻结/验收记录理解。
+- P0：摄入 v1 中先交付可独立验收的 **#8 复杂度评分与解析路由**；其余质量检测器、
+  MinerU、三份坏文档及修复检索闭环、知识库扩至十份继续待办。
+- P1：GPU 验证、rerank、忠实度自检、公式登记。P2：RAG 专属查询扩展、完整目录识别、
+  规模优化；A 已实现指代改写，不能重复把其算作 B 的未完成任务。
+- 协作影响：C 的坏文档管理台/鲁棒性评测仍依赖质量及修复链路；A 后续公式消费依赖
+  公式登记，模型共用依赖 GPU 验证；A 当前内核/schema linking 并未被本项阻塞。
+
+### 本次子交付与验收
+
+- `ingestion/complexity.py`：按 onboarding 权重产生 1–5 级和可解释依据，选择解析器；
+  正常 PDF 可直抽，扫描/混合 PDF 不静默遗漏页面。
+- `rag/pipeline.py`：摄入前评分与路由，写入 DocIR.meta；MinerU 不可用时在写库前报错。
+- `rag/store.py`：内容未变仍刷新评估 JSONB，保留未知 metadata、chunk 和向量。
+- `tests/test_complexity.py`：临时 PDF 确定性复现、规则边界、冻结 IR 保持及真实 PG 回程。
+- `docs/contracts/ingestion_ir.md`：登记可选评分依据，说明检测边界和复现命令。
+
+质量检测器验收仍为正常/坏文档缺陷报告；MinerU 验收仍为扫描件→IR→检索；
+坏文档验收仍为三类告警及修复后检索；十份文档需 C 评审用例；GPU 验收需显存、
+吞吐和 rerank P50/P95；公式登记需参数来源可供 A 消费。本次不宣称这些已完成。
+
+后续模型已有明确选型 BGE-M3，无需再询问名称。当前 kb_chunk 为 512 维，目标为 1024 维：
+后续应在独立 GPU 环境、确认共享 GPU 占用后验证，用独立 schema/表建立新索引并全量
+评测，对照通过后再安排切换并保留旧索引回滚。本次不执行旧 onboarding 的 drop 指引。
+
+### 环境与修改前基线
+
+- Python 3.12.3 / PyMuPDF 1.28.2；使用已有 CPU `.venv` 与 bge-small 模型。
+- Compose：backend/frontend 运行、db healthy；health：ok/db=true/LLM mock。
+- `cd backend && .venv/bin/python -m pytest tests -q`：77 passed，4 个既有 warning。
+- `cd backend && .venv/bin/python eval/run_rag.py`：8 例 retrieval hit@6=100%，
+  answer hit=0%（mock，不代表真实模型质量）；失败检索用例无。
+  逐条耗时 rag-001..008：235/8/11/9/11/8/11/10 ms。
+  报告：`backend/var/eval/rag_20260923_104822.json`（运行产物，不提交）。
+
+
+### 修改后验证（本次实际结果）
+
+以下 Python 命令均在 `backend/` 下执行：
+
+| 命令 | 结果 |
+|---|---|
+| `.venv/bin/python -m pytest tests/test_complexity.py tests/test_ingestion.py tests/test_rag.py -q` | 41 passed（含新增 30 项） |
+| `.venv/bin/python -m pytest tests -q` | 最终 107 passed，11.27s；4 个既有 warning，无 skip/failure |
+| `.venv/bin/python scripts/ingest_docs.py` | 4 docs，0 new chunks；原有 38 chunks 保留；local/512 维 |
+| `.venv/bin/python eval/run_rag.py` | 测试临时文档清理后独立评测：8/8 retrieval hit@6；mock answer hit=0% |
+| `.venv/bin/python scripts/smoke_rag.py` | 38 chunks，retrieval recall@6=8/8；两条脚本化生成及 Citation/Trace 正常 |
+
+最终报告：`backend/var/eval/rag_20260923_105834.json`，不提交运行产物。
+rag-001..008 耗时分别为 **354/11/8/9/9/7/8/8 ms**，检索失败用例无。
+未切换真实 LLM，故本次不能宣称真实答案忠实度通过。
+
+只读 SQL 确认四文档 `meta.complexity=1`，chunk 数为 employee_handbook=15、
+product_operations=10、sales_review_2025=7、service_sop=6；无测试文档残留。
+正常文档和所有异常 PDF 的结果可通过新增测试复现，扫描/混合 PDF 为 5 级，
+空白页为 4 级，长表格文档为 3 级。此为复杂度评估，不等同于质量缺陷检测。
+
+格式工具隔离安装在 `/tmp/mqa-b-format-tools`（Ruff 0.16.8），未修改 CPU `.venv`。
+仓库根执行并通过：
+
+```bash
+/tmp/mqa-b-format-tools/bin/ruff format --check backend/app/ingestion/complexity.py backend/tests/test_complexity.py
+/tmp/mqa-b-format-tools/bin/ruff format --check --range 41-69 backend/app/rag/pipeline.py
+/tmp/mqa-b-format-tools/bin/ruff format --check --range 121-140 backend/app/rag/store.py
+/tmp/mqa-b-format-tools/bin/ruff check backend/app/ingestion/complexity.py backend/tests/test_complexity.py
+/tmp/mqa-b-format-tools/bin/ruff check --select E9,F63,F7,F82 backend/app/rag/pipeline.py backend/app/rag/store.py
+git diff --check
+git status --short
+git --no-pager diff --stat
+```
+
+已有文件仅对本次变更函数做格式检查；不对队友未修改代码做全文件风格重排。
+本增量包含 4 个既有文件修改和 2 个新增文件；运行报告、模型及环境文件不纳入版本控制。
+`git diff --stat` 默认不包含两个未跟踪新文件，审查时需一并查看。

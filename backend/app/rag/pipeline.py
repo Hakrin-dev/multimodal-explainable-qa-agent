@@ -20,6 +20,7 @@ from ..core.llm import LLMService, get_llm_service
 from ..core.prompts import rag as prompts
 from ..core.tracing import NodeType, TraceCollector
 from ..ingestion import chunker, pdf_ingest
+from ..ingestion.complexity import ParserUnavailableError, assess_pdf
 from ..ingestion.ir import DocIR
 from .embedding import EmbeddingService, get_embedding_service
 from .retriever import ChunkHit, HybridRetriever
@@ -37,17 +38,28 @@ class RAGResult:
     latency_ms: int = 0
 
 
-def ingest_document(path: str, store: KBStore | None = None,
-                    embedding: EmbeddingService | None = None,
-                    force: bool = False) -> tuple[DocIR, int]:
-    """Parse → chunk → embed → store. Skips unchanged docs (content hash)."""
+def ingest_document(
+    path: str,
+    store: KBStore | None = None,
+    embedding: EmbeddingService | None = None,
+    force: bool = False,
+) -> tuple[DocIR, int]:
+    """Assess/route → parse → chunk → embed → store; refresh unchanged metadata."""
+    assessment = assess_pdf(path)
+    if assessment.parser != "pymupdf":
+        raise ParserUnavailableError(assessment)
+    doc = pdf_ingest.parse_pdf(path)
+    doc.meta.update(assessment.metadata())
+    chunker.chunk_doc(doc)
+    if not doc.chunks:
+        raise ValueError("PDF produced no chunks; existing index was left untouched")
+
     embedding = embedding or get_embedding_service()
     store = store or KBStore(dim=embedding.dim)
-    doc = pdf_ingest.parse_pdf(path)
-    chunker.chunk_doc(doc)
 
     if not force and store.doc_content_hash(doc.doc_id) == doc.content_hash():
-        return doc, 0  # unchanged, skip
+        if store.update_assessment(doc):
+            return doc, 0  # unchanged chunks; refresh metadata without re-embedding
 
     embeddings = embedding.embed([c.text for c in doc.chunks])
     store.upsert_doc(doc, chunk_embeddings=np.asarray(embeddings))

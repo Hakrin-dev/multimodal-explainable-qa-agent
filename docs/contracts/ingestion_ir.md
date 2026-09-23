@@ -135,7 +135,7 @@ raw file ──► 质量评估(#9) ──► 复杂度评分(#8) ──► 解�
 | 层级感知切片 + 面包屑 + 硬换行拼接 | ✅ v0 | `chunker.py` |
 | 文本层检测（#9 第一个检测器） | ✅ | `pdf_ingest.has_text_layer` |
 | 质量评估其余检测器（方向/倾斜/清晰度/繁简） | ⬜ W2 | 建议加 `quality.py` |
-| 复杂度评分 1-5 + 解析路由（#8 轻量） | ⬜ W2 | 建议加 `complexity.py` |
+| 复杂度评分 1-5 + 解析路由（#8 轻量） | ✅ 规则评分/路由选择；MinerU 执行待接入 | `complexity.py`；`rag.pipeline.ingest_document` |
 | MinerU / PaddleOCR 接入（扫描件路径） | ⬜ W2 | `parsers/mineru.py` 等 |
 | 目录信号融合 + LLM 层级判定（#7 完整版） | ⬜ 决赛 | `pdf_ingest` 扩展 |
 | 公式登记（#6） | ⬜ W2 | LLM 从 blocks 抽 LaTeX→FormulaIR |
@@ -148,3 +148,58 @@ raw file ──► 质量评估(#9) ──► 复杂度评分(#8) ──► 解�
 | 0.1 | 2026-09-22 | A 代拟初稿（数据结构已随 RAG 最小闭环落地验证） |
 | **0.2** | **2026-09-26** | **冻结**：B 评审细化（字段约束/序列化边界/治理规则）合入；实现 `ingestion/ir.py` 与文档一致（标题识别 4/4 文档 100% 命中） | **✅ FROZEN（A/B 签字）** |
 | 0.2 | 2026-09-22 | B（sxy）完成实现对照评审；明确页码、level、bbox、breadcrumb 与 content_hash 语义；评审通过并冻结 |
+
+## W2 B 增量：复杂度评分与解析路由（rules-v1）
+
+本增量完成 #8 轻量评分、路由选择和原生 PDF 摄入接入，不代表摄入 v1 整体完成。
+不修改 BlockIR/ChunkIR、质量字段、Citation 或 `content_hash()` 语义。
+
+- 基础分 1；任一页无非空文本 +3；检测到表格 +1；页数 >20 +1；
+  图片占文档总页面面积 >30% +1；最终截断到 1–5。
+- 对混合 PDF 逐页检查，无文本页含空白页，保守要求 OCR/人工复核，避免原生直抽漏页。
+  这不改变原有 `has_text_layer()` 的“任一页有文本”语义。
+- 表格采用 PyMuPDF 默认有线表格检测；不保证识别无框表格。
+  图片面积采用页面可见区域内图片矩形并集，重叠不重复计数；按全部页总面积加权。
+- 1–2 级选择 `pymupdf`；3 级选择 `mineru`；4–5 级选择 `mineru` 并告警
+  `postprocessing_required`。`DocIR.parser` 仍表示实际执行的解析器。
+- MinerU 尚未实现：摄入入口抛出 `ParserUnavailableError`（携带 assessment），
+  在模型加载和数据库访问前停止，不伪造解析成功，不删除已有文档或索引。
+  损坏、加密文件明确报错；本模块不负责质量修复。
+
+已有 `meta.complexity` 保存整数等级。新增可选 `meta.complexity_details`：
+
+```json
+{
+  "version": "rules-v1",
+  "base_score": 1,
+  "contributions": {
+    "textless_page": 0,
+    "table": 0,
+    "over_20_pages": 0,
+    "image_over_30_percent": 0
+  },
+  "textless_pages": [],
+  "table_pages": [],
+  "image_ratio": 0.0,
+  "selected_parser": "pymupdf",
+  "warnings": []
+}
+```
+
+页列表为 1-based。评估信息通过现有 `kb_doc.meta` JSONB 落库，无 DDL 迁移。
+内容 hash 相同时仍刷新这两个评估字段，保留其它 metadata、chunk ID 和 embedding；
+不需要 `--force`，不改变以 blocks 为依据的 hash。写入时再次检查 hash。
+
+独立复现（不需要 GPU/OCR）：
+
+```bash
+cd backend
+.venv/bin/python -m pytest tests/test_complexity.py -q
+```
+
+测试在临时目录生成正常、表格、长文档、扫描、混合、旋转、重叠图片、空白、加密、损坏
+PDF，并验证现有四份知识库 PDF。真实 PG 测试使用唯一测试文档 ID，结束后仅清理该 ID。
+质量评估检测器、三类业务坏文档生成/修复、MinerU/PaddleOCR 适配仍待后续交付。
+
+增量登记（2026-09-23，B 实现并完成回归验证）：新增可选 `meta.complexity_details`，
+实现已有 `meta.complexity`；所有冻结字段与语义保持不变。
