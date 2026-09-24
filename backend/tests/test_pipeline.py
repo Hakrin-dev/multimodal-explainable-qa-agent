@@ -116,7 +116,9 @@ def test_rewriter_alias(tmp_path):
     assert any(t["canonical"] == "Rock" for t in terms)
     r = rewrite("摇滚曲风有多少首歌", terms)
     assert "Rock" in r.question
-    assert any(w["before"] == "摇滚" for w in r.rewrites)
+    # alias-set agnostic: W3 LLM aliases may include longer spans (摇滚曲风)
+    # that win the longest-match — assert the 摇滚 span maps to Rock either way
+    assert any("摇滚" in w["before"] and w["after"] == "Rock" for w in r.rewrites)
 
 
 # ------------------------------------------------------- top-n heuristic --

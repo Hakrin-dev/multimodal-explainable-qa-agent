@@ -72,6 +72,47 @@ def generate(term: dict) -> list[str]:
     return out[:6]
 
 
+
+
+# ---- W3 审阅剪枝规则（A，2026-09-24 复审固化）--------------------------------
+# 1) 泛化常用词/噪音/过时译名黑名单：这些词在普通句子里高频出现，作精确别名会误改写
+#    （例：“大多客户”被改写成 “Toronto 客户”）。
+COMMON_WORD_BLOCKLIST = {
+    "大多", "安卓", "影片", "片子", "剧集", "听书", "波普", "流行",  # 流行=泛化词，Pop 交给模糊匹配
+    "身毒", "牙利", "爱兰", "奥地", "剧乐", "爵式", "欧剧", "泡泡", "雷吉", "雷盖",
+    "安猪", "巴子", "库比", "布达", "佩斯", "花都", "巴梨", "小玛", "玛姬", "小罗", "老史",
+    "西德", "东德", "印地", "法籍", "图桑", "土孙", "迪戎", "狄戎", "第荣", "巴希", "芬籣",
+}
+# 2) 混合脚本噪音（如 “摇gun”）与纯拉丁单字母缩写由正则拦截
+import re as _re
+_MIXED_SCRIPT = _re.compile(r"^[\u4e00-\u9fff]+[a-zA-Z]+[\u4e00-\u9fff]*$|^[a-zA-Z]+[\u4e00-\u9fff]+$")
+
+def review_prune(candidates: dict[str, list[str]], canonicals: set[str]) -> dict[str, list[str]]:
+    """Apply blocklist + resolve cross-canonical ambiguity (base-term rule):
+    an alias shared by multiple canonicals stays ONLY on the canonical that is
+    a substring of the others (Rock ⊂ Rock And Roll); otherwise pruned."""
+    alias_owners: dict[str, set[str]] = {}
+    for canon, aliases in candidates.items():
+        for a in set(aliases):
+            alias_owners.setdefault(a, set()).add(canon)
+    resolved: dict[str, set[str]] = {c: set(als) for c, als in candidates.items()}
+    for a, owners in alias_owners.items():
+        if a in canonicals:
+            continue
+        keep = None
+        if len(owners) > 1:
+            bases = [o for o in owners if all(o == x or o in x for x in owners)]
+            keep = bases[0] if len(bases) == 1 else None
+        for o in owners:
+            resolved[o].discard(a)
+            if keep == o:
+                resolved[o].add(a)
+    out = {}
+    for canon, aliases in resolved.items():
+        out[canon] = [a for a in aliases
+                      if a not in COMMON_WORD_BLOCKLIST and not _MIXED_SCRIPT.match(a)]
+    return out
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0, help="only first N terms (smoke)")
