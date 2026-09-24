@@ -37,6 +37,7 @@ Qwen 隐式上下文缓存同理）。三层结构保证最大公共前缀稳定
 | 5 | `agent.fuse` | `agent/planner.py::FUSE_STATIC` | agent.fuse | ✅ 冻结 |
 | 6 | `rag.generate` | `prompts/rag.py::RAG_GENERATE_STATIC` | rag.generate | ✅ 冻结 |
 | 7 | `agent.rewrite` | `agent/rewrite.py::REWRITE_STATIC` | agent.rewrite | ✅ 冻结（W2-D2 注册：指代消解/省略补全，失败回退原问题） |
+| 8 | `nl2sql.link_rerank` | `prompts/nl2sql.py::LINK_RERANK_STATIC` | nl2sql.link_rerank | ✅ 冻结（W3 注册：Schema Linking LLM 精排表筛选，response_json 输出不可解析时优雅降级回召回结果） |
 
 **新家族注册协议**（B/C 新增 Prompt 时遵守）：静态层文本放 `core/prompts/` 或对应模块顶部常量；
 在注册表追加一行；purpose 命名 `<域>.<动作>`；首次合入即视为冻结（此后走追加规则）。
@@ -88,3 +89,4 @@ B 待注册：`rag.query_rewrite`（W2，注意与 agent.rewrite 职责区分：
 | 0.1 | 2026-09-22 | A 起草：nl2sql 两模板上线文本 + intent 候选 + 冻结纪律 |
 | **1.0** | **2026-09-28** | **冻结**：六家族注册表定稿（nl2sql×2 / agent×3 / rag×1）；文本零改动（保缓存）；新家族注册协议入档 | **✅ FROZEN** |
 | 1.1 | 2026-09-29 | `agent.plan` schema 演进（子任务 DAG：id / depends_on / {tN.result} 占位符）——**冻结规则的登记例外**：功能必需的 schema 变更而非措辞优化；PROMPT_TEMPLATE_VERSION bump 至 v0.4-w2-d3（全量缓存失效为刻意行为）；其余六家族文本未动 | ✅ 变更已登记 |
+| 1.2 | 2026-09-24 | W3：① 新家族 `nl2sql.link_rerank` 注册（#8，静态层首合即冻结）；② **负结果记录**：曾试验向 `nl2sql.generate` 追加"计数用 COUNT(*)/主键"规则（Rule 7/8 实验）——与 track 表业务注释（W1 name-dedup 约定：曲目数量按曲名去重）直接冲突，导致 st-004/mt-008 回归失败，**已完整回退**，静态层文本保持 v1.0 零改动，PROMPT_TEMPLATE_VERSION 维持 v0.4-w2-d3；③ 顺手修正 eval 数据 bug：mt-021 参考SQL `COUNT(*)` → `COUNT(DISTINCT t.name)`（对齐 W1 约定，见 cases notes） | ✅ 已登记 |

@@ -76,3 +76,34 @@ def build_summarize_messages(question: str, sql: str,
             f"列：{columns}\n数据（最多展示20行）：\n{preview}"
         )},
     ]
+
+
+# ---------------------------------------------------- link_rerank (W3 #4) --
+# 家族 #8 nl2sql.link_rerank — Schema Linking LLM 精排（W3 注册，首次合入即冻结）。
+LINK_RERANK_STATIC = """\
+你是数据库表筛选器。给定用户问题和候选表卡片，判断哪些表是回答该问题所必需的。
+
+规则：
+1. 必须保留：问题主体直接查询的表、过滤/分组条件涉及的表、聚合数据来源表、以及连接这些表所必需的中间表。
+2. 必须删除：回答问题用不到的表——即使表名或列名与问题有字面相似。注意区分主表与明细表：问订单汇总通常只需主表，问订单内具体条目才需要明细表。
+3. 拿不准某表是否必需时，保留它（宁可多留，不可漏掉）。
+4. 只输出 JSON：{"tables": ["表名", ...]}，表名必须来自候选清单，不要输出其他内容。"""
+
+
+def build_link_rerank_messages(question: str, cards: list[dict]) -> list[dict]:
+    """cards: [{name, comment, columns, rows, samples}] — compact numbered list."""
+    lines = []
+    for i, c in enumerate(cards, 1):
+        head = f"{i}. {c['name']}（{c['rows']} 行）"
+        if c.get("comment"):
+            head += f" — {c['comment']}"
+        lines.append(head)
+        lines.append(f"   列: {c['columns']}")
+        if c.get("samples"):
+            lines.append(f"   示例: {c['samples']}")
+    return [
+        {"role": "system", "content": LINK_RERANK_STATIC},
+        {"role": "user", "content": (
+            f"【用户问题】\n{question}\n\n【候选表】\n" + "\n".join(lines)
+            + "\n\n请输出必需表的 JSON 清单。")},
+    ]

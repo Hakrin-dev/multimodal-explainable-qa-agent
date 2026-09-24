@@ -1,22 +1,25 @@
-"""Schema Linking v0 (PLAN §4.2 ③, 中级任务 #4 地基 · W3 前期).
+"""Schema Linking (PLAN §4.2 ③, 中级任务 #4).
 
-Offline: per-table semantic cards (name + business comment + columns + FKs
-+ sample values) indexed by keyword (jieba) AND vector (embedding service).
-Online: dual-recall top-k tables → FK closure (join connectivity) →
-compressed schema context + explicit join paths (FK-graph BFS).
+v0 (W3 前期): offline per-table semantic cards (name + business comment +
+columns + FKs + sample values) indexed by keyword (jieba) AND vector
+(embedding service). Online: dual-recall top-k tables → FK closure (join
+connectivity) → compressed schema context + explicit join paths (FK-graph BFS).
 
-W3 proper adds: LLM 精排 to drop semantically-near distractors
-(Invoice vs InvoiceLine) and column-level linking; v0 measures the
-token-reduction/accuracy tradeoff (ablation vs full-schema baseline).
+v1 (W3 正菜): LLM 精排 — prune semantically-near distractors (Invoice vs
+InvoiceLine) from the v0 over-recall, with FK-connectivity repair and
+graceful degradation back to v0 on any LLM/parse failure. Ablation flags:
+settings.schema_linking (v0) / settings.schema_linking_rerank (v1).
 """
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 
 from ..db import schema_meta
 from ..db.schema_meta import TableMeta
+from ..core.tracing import NodeType
 
 _ZH_EN_STOP = set("的 有 多少 哪些 是 什么 怎么 请 和 与 对比 按 按照 从 在 中 一共 所有"
                   " the of in on for and to with how what which list show".split())
@@ -41,12 +44,19 @@ def _card_text(t: TableMeta) -> str:
     return f"{t.name} {t.comment or ''} {cols} {' '.join(samples)}"
 
 
+def _extract_json(text: str) -> str:
+    """First {...} block in the text (LLMs occasionally add prose around JSON)."""
+    m = re.search(r"\{.*\}", text, re.S)
+    return m.group(0) if m else text
+
+
 class SchemaLinker:
     def __init__(self, top_k: int = 5, use_vector: bool = True):
         self.top_k = top_k
         self.use_vector = use_vector
         self._cards: dict[str, str] | None = None
         self._vectors: dict[str, list] | None = None
+        self._col_vectors: dict[str, list] | None = None  # W3 #4 列级索引
         self._token_cache: dict[str, dict] = {}
 
     # -- offline index ------------------------------------------------------
@@ -131,6 +141,124 @@ class SchemaLinker:
         join_paths = self._join_paths(selected)
         return LinkingResult(selected=sorted(selected), join_paths=join_paths,
                              recalled=sorted(recalled))
+
+    # -- LLM 精排 (W3 #4 正菜) -------------------------------------------------
+
+    def _rerank_cards(self, selected: list[str]) -> list[dict]:
+        """Compact numbered cards for the rerank prompt (token-frugal)."""
+        tables = {t.name: t for t in schema_meta.load_table_meta()}
+        cards = []
+        for name in selected:
+            t = tables.get(name)
+            if t is None:
+                continue
+            samples = []
+            for c in t.columns:
+                if c.is_primary or c.fks:
+                    continue
+                vals = schema_meta.top_values(t.name, c.name, limit=2)
+                if vals and all(len(v) <= 20 for v in vals):
+                    samples.append(f"{c.name}:{','.join(vals[:2])}")
+            cards.append({
+                "name": t.name, "comment": t.comment or "",
+                "columns": ", ".join(c.name for c in t.columns),
+                "rows": t.row_count, "samples": "; ".join(samples)[:200]})
+        return cards
+
+    def rerank(self, question: str, result: LinkingResult, llm,
+               trace=None, parent=None) -> LinkingResult:
+        """LLM 精排：从 v0 候选中删掉语义近邻干扰表（Invoice vs InvoiceLine 类）。
+
+        保证（W3 消融的前提）：
+        - 只删不加 —— 召回覆盖永不低于 v0；
+        - 删后 FK 连通性自动桥接修复 —— Join 路径仍完整；
+        - LLM 输出不可解析 / 空 / 全删 → 原样返回 v0 结果（优雅降级）。
+        """
+        if llm is None or len(result.selected) <= 1:
+            return result
+        from ..core.prompts import nl2sql as prompts
+        cards = self._rerank_cards(result.selected)
+        if not cards:
+            return result
+        try:
+            resp = llm.chat(prompts.build_link_rerank_messages(question, cards),
+                            temperature=0.0, response_json=True, max_tokens=400,
+                            purpose="nl2sql.link_rerank")
+            data = json.loads(_extract_json(resp.content))
+            keep = [t for t in result.selected if t in set(data.get("tables") or [])]
+        except Exception:  # noqa: BLE001 — any LLM/parse failure degrades to v0
+            return result
+        if trace is not None and parent is not None:
+            with trace.span("llm", NodeType.LLM_CALL, parent=parent) as ln:
+                trace.finish(ln, output=", ".join(keep) or None, detail={
+                    "model": resp.model, "cost_rmb": resp.cost_rmb,
+                    "raw": resp.content[:300]})
+        if not keep:
+            return result
+        # connectivity repair: pruning may have removed bridge tables
+        kept = self._fk_closure(set(keep), self._ensure_cards())
+        return LinkingResult(selected=sorted(kept),
+                             join_paths=self._join_paths(kept),
+                             recalled=result.recalled)
+
+    # -- 列级 linking (W3 #4 完整版) -------------------------------------------
+
+    def _col_cards(self) -> dict[str, str]:
+        """f"{table} {comment} {col} {samples}" per data column (PK/FK excluded:
+        join plumbing is already covered by explicit join paths)."""
+        cards: dict[str, str] = {}
+        for t in schema_meta.load_table_meta():
+            for c in t.columns:
+                if c.is_primary or c.fks:
+                    continue
+                vals = schema_meta.top_values(t.name, c.name, limit=2)
+                sample = f" 如{','.join(str(v) for v in vals)}" if vals else ""
+                cards[f"{t.name}.{c.name}"] = (
+                    f"{t.name} {t.comment or ''} {c.name}{sample}")
+        return cards
+
+    def _ensure_col_vectors(self) -> dict[str, list]:
+        if self._col_vectors is None and self.use_vector:
+            from ..rag.embedding import get_embedding_service
+            cards = self._col_cards()
+            keys = list(cards)
+            embs = get_embedding_service().embed([cards[k] for k in keys])
+            self._col_vectors = {k: e for k, e in zip(keys, embs)}
+        return self._col_vectors or {}
+
+    def column_link(self, question: str, selected: list[str],
+                    top_n: int = 3) -> dict[str, list[str]]:
+        """Relevant data columns per selected table (annotation, not removal).
+
+        Score = keyword overlap ∪ vector sim; per table keep top_n columns
+        above threshold. Measured metric: 列定位准确率/列召回@n (§5 #4).
+        """
+        tokens = set(self._tokens(question))
+        cards = self._col_cards()
+        vecs = self._ensure_col_vectors()
+        qvec = None
+        if vecs:
+            from ..rag.embedding import get_embedding_service
+            qvec = get_embedding_service().embed_query(question)
+        scored: dict[str, list[tuple[float, str]]] = {}
+        for key, vec in vecs.items():
+            tname = key.split(".")[0]
+            if tname not in selected:
+                continue
+            col = key.split(".", 1)[1]
+            card_tokens = set(self._tokens(cards[key]))
+            score = float(len(card_tokens & tokens))
+            if qvec is not None:
+                score = max(score, float(qvec @ vec) if score == 0 else score + float(qvec @ vec) * 0.5)
+            if score >= 0.5:
+                scored.setdefault(tname, []).append((score, col))
+        out: dict[str, list[str]] = {}
+        for tname, pairs in scored.items():
+            pairs.sort(key=lambda x: -x[0])
+            cols = [c for _, c in pairs[:top_n]]
+            if cols:
+                out[tname] = cols
+        return out
 
     def _partner_expand(self, selected: set[str], question: str,
                         vec_recall: set[str], cap: int = 9) -> set[str]:
@@ -288,8 +416,21 @@ class SchemaLinker:
         return edges
 
 
-def build_compressed_context(selected: list[str]) -> str:
-    """DDL context for ONLY the selected tables (+ samples)."""
+def build_compressed_context(selected: list[str],
+                             relevant_cols: dict[str, list[str]] | None = None) -> str:
+    """DDL context for ONLY the selected tables (+ samples + 相关列标注)."""
     tables = schema_meta.load_table_meta()
     subset = [t for t in tables if t.name in set(selected)]
-    return schema_meta.build_schema_context(subset, with_samples=True)
+    ctx = schema_meta.build_schema_context(subset, with_samples=True)
+    if not relevant_cols:
+        return ctx
+    # annotate per-table relevant columns (W3 #4 列级 linking) — evidence for
+    # the generator + the 列定位 metric; annotation, never column removal.
+    blocks = []
+    for t in subset:
+        block = ctx.split("\n\n")[len(blocks)]
+        rel = relevant_cols.get(t.name) or []
+        if rel:
+            block += f"\n  -- 相关列: {', '.join(rel)}"
+        blocks.append(block)
+    return "\n\n".join(blocks)

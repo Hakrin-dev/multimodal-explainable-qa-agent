@@ -90,6 +90,8 @@ class Settings(BaseSettings):
 
     # ---- schema linking (W3 #4/#5) ----
     schema_linking: bool = True    # compressed schema + join paths (ablation: 0)
+    schema_linking_rerank: bool = True  # LLM 精排过滤干扰表 (W3 #4, ablation: 0)
+    term_vector_match: bool = True  # rewriter 模糊匹配：编辑距离+pgvector (W3 #1/#2)
 
     # ---- nl2sql pipeline ----
     sql_max_rows: int = 50

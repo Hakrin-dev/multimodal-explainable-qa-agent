@@ -77,12 +77,13 @@ def test_pipeline_needs_clarification_without_db(monkeypatch, tmp_path):
 # ------------------------------------------------------------ integration --
 
 @requires_db
-def test_pipeline_end_to_end_mock(tmp_path):
+def test_pipeline_end_to_end_mock(tmp_path, monkeypatch):
     """Full loop with a scripted mock SQL answer against the live Chinook DB."""
     p = NL2SQLPipeline(llm=_mock_llm(tmp_path, [
         "【分析】统计曲目总数\n【SQL】\n```sql\nSELECT COUNT(*) AS cnt FROM track\n```",
         "数据库中共有若干首曲目。",
     ]))
+    monkeypatch.setattr(p.settings, "schema_linking_rerank", False)  # keep scripted slots
     r = p.run("一共有多少首曲目？")
     assert r.status == "ok"
     assert r.columns == ["cnt"]
@@ -94,13 +95,14 @@ def test_pipeline_end_to_end_mock(tmp_path):
 
 
 @requires_db
-def test_repair_loop_recovers(tmp_path):
+def test_repair_loop_recovers(tmp_path, monkeypatch):
     """First SQL invalid (unknown table) -> repair round fixes it."""
     p = NL2SQLPipeline(llm=_mock_llm(tmp_path, [
         "【分析】误写表名\n【SQL】\n```sql\nSELECT COUNT(*) FROM tracks\n```",
         "【分析】修正表名\n【SQL】\n```sql\nSELECT COUNT(*) AS cnt FROM track\n```",
         "共若干首曲目。",
     ]))
+    monkeypatch.setattr(p.settings, "schema_linking_rerank", False)  # keep scripted slots
     r = p.run("多少曲目？")
     assert r.status == "ok" and r.repair_rounds == 1
     labels = [c["label"] for c in r.trace["root"]["children"]]
