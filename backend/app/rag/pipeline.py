@@ -22,6 +22,7 @@ from ..core.tracing import NodeType, TraceCollector
 from ..ingestion import chunker, pdf_ingest
 from ..ingestion.complexity import ParserUnavailableError, assess_pdf
 from ..ingestion.ir import DocIR
+from ..ingestion.quality import assess_quality
 from .embedding import EmbeddingService, get_embedding_service
 from .retriever import ChunkHit, HybridRetriever
 from .store import KBStore
@@ -44,12 +45,17 @@ def ingest_document(
     embedding: EmbeddingService | None = None,
     force: bool = False,
 ) -> tuple[DocIR, int]:
-    """Assess/route → parse → chunk → embed → store; refresh unchanged metadata."""
+    """Assess quality/complexity → route → parse → chunk → embed → store."""
+    quality = assess_quality(path)
     assessment = assess_pdf(path)
+
     if assessment.parser != "pymupdf":
         raise ParserUnavailableError(assessment)
+
     doc = pdf_ingest.parse_pdf(path)
+    doc.meta.update(quality.metadata())
     doc.meta.update(assessment.metadata())
+
     chunker.chunk_doc(doc)
     if not doc.chunks:
         raise ValueError("PDF produced no chunks; existing index was left untouched")

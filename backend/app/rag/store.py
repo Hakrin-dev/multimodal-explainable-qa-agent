@@ -124,7 +124,12 @@ class KBStore:
         Match the hash again so concurrent content changes cannot receive an
         assessment computed for different content.
         """
-        metadata = {key: doc.meta[key] for key in ("complexity", "complexity_details")}
+        owned_keys = ("quality", "complexity", "complexity_details")
+        metadata = {key: doc.meta[key] for key in owned_keys if key in doc.meta}
+
+        if not metadata:
+            return False
+
         with get_conn(readonly=False) as conn, conn.cursor() as cur:
             cur.execute(
                 "UPDATE kb_doc SET meta = meta || %s::jsonb"

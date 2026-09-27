@@ -181,3 +181,60 @@ git --no-pager diff --stat
 已有文件仅对本次变更函数做格式检查；不对队友未修改代码做全文件风格重排。
 本增量包含 4 个既有文件修改和 2 个新增文件；运行报告、模型及环境文件不纳入版本控制。
 `git diff --stat` 默认不包含两个未跟踪新文件，审查时需一并查看。
+
+## B 增量（2026-09-27）：#9 文档质量评估 rules-v1
+
+> 本节是在 2026-09-23 已交付复杂度评分与解析路由基础上的后续增量。
+> 上文未完成/风险描述保留为历史记录，以本节作为当前最新状态。
+
+### 本次交付
+
+- 新增 `backend/app/ingestion/quality.py`，提供可解释的 PDF 质量评估：
+  页面方向、文本行倾斜、渲染清晰度、文本层覆盖和保守繁体字符信号。
+- 新增文档级 `score`、逐页 `page_reports`、`textless_pages`、
+  `rotated_pages` 和结构化 `warnings`，页码保持 1-based。
+- `rag.pipeline.ingest_document` 在复杂度评分与解析前执行质量检测，
+  将结果写入 `DocIR.meta.quality`。
+- `rag.store.update_assessment` 合并刷新 `quality`、`complexity` 和
+  `complexity_details`，内容未变化时保留 chunk ID 和 embedding。
+- 损坏、加密 PDF 明确拒绝，不删除或覆盖已有索引。
+- 新增 `backend/tests/test_quality.py`，覆盖正常、旋转、扫描、模糊、
+  简繁误报、元数据契约、损坏、加密和 Pipeline 接入共 9 项测试。
+- 更新 `docs/contracts/ingestion_ir.md`，登记 rules-v1 字段、算法边界、
+  元数据形状和独立复现方法。
+
+### 验收结果
+
+| 验收项 | 结果 |
+|---|---|
+| 质量检测专项测试 | `9 passed` |
+| 既有复杂度/摄入/RAG 回归 | `41 passed` |
+| 全量测试 | `130 passed`，5 warnings，0 failure |
+| 正常知识库文档 | 4/4 均无旋转、无倾斜、具备文本层、无繁体误报 |
+| 幂等摄入 | 4 docs、38 chunks、0 new chunks |
+| 向量保留 | PostgreSQL 中 38/38 chunks 保留 embedding |
+| RAG 正式评测 | 8/8，retrieval hit@6 = 100% |
+| RAG 冒烟 | retrieval recall@6 = 8/8；Citation/Trace 正常 |
+
+四份正常文档的质量结果：
+
+| doc_id | clarity | score | complexity |
+|---|---:|---:|---:|
+| employee_handbook | 0.9707 | 0.9912 | 1 |
+| product_operations | 0.9824 | 0.9947 | 1 |
+| sales_review_2025 | 0.9843 | 0.9953 | 1 |
+| service_sop | 0.9745 | 0.9923 | 1 |
+
+正式 RAG 报告：
+`backend/var/eval/rag_20260927_123920.json`（运行产物，不提交）。
+当前为 mock LLM，因此 answer hit=0% 仅代表未验证真实生成答案质量，不代表检索失败。
+
+### 能力边界与剩余任务
+
+- 当前方向检测读取 PDF rotation metadata，不推断缺少方向元数据的扫描图片方向。
+- 当前倾斜检测依赖原生文本行，扫描件仍需 OCR/图像级倾斜检测。
+- 清晰度为 Laplacian 启发式指标，不等价于 OCR 字符准确率。
+- 繁简检测使用保守繁体专属字符集，不承担全文简繁转换。
+- 本次完成质量检测器，不宣称摄入流水线 v1 整体完成。
+- 尚待：MinerU/PaddleOCR 实际解析、三类坏文档生成与修复检索闭环、
+  知识库扩至 10 份、GPU/BGE-M3/rerank、忠实度自检和公式登记。

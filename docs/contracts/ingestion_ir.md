@@ -134,7 +134,7 @@ raw file ──► 质量评估(#9) ──► 复杂度评分(#8) ──► 解�
 | PyMuPDF 直抽 + 字号统计标题识别（#7 简化版地基） | ✅ v0 | `pdf_ingest.py` |
 | 层级感知切片 + 面包屑 + 硬换行拼接 | ✅ v0 | `chunker.py` |
 | 文本层检测（#9 第一个检测器） | ✅ | `pdf_ingest.has_text_layer` |
-| 质量评估其余检测器（方向/倾斜/清晰度/繁简） | ⬜ W2 | 建议加 `quality.py` |
+| 质量评估（方向/倾斜/清晰度/文本层/繁简） | ✅ rules-v1；扫描件视觉方向与 OCR 级倾斜待后续增强 | `quality.py`；`rag.pipeline.ingest_document` |
 | 复杂度评分 1-5 + 解析路由（#8 轻量） | ✅ 规则评分/路由选择；MinerU 执行待接入 | `complexity.py`；`rag.pipeline.ingest_document` |
 | MinerU / PaddleOCR 接入（扫描件路径） | ⬜ W2 | `parsers/mineru.py` 等 |
 | 目录信号融合 + LLM 层级判定（#7 完整版） | ⬜ 决赛 | `pdf_ingest` 扩展 |
@@ -199,7 +199,87 @@ cd backend
 
 测试在临时目录生成正常、表格、长文档、扫描、混合、旋转、重叠图片、空白、加密、损坏
 PDF，并验证现有四份知识库 PDF。真实 PG 测试使用唯一测试文档 ID，结束后仅清理该 ID。
-质量评估检测器、三类业务坏文档生成/修复、MinerU/PaddleOCR 适配仍待后续交付。
+三类业务坏文档生成/修复、扫描件视觉方向与 OCR 级倾斜检测、
+MinerU/PaddleOCR 适配仍待后续交付。
 
 增量登记（2026-09-23，B 实现并完成回归验证）：新增可选 `meta.complexity_details`，
 实现已有 `meta.complexity`；所有冻结字段与语义保持不变。
+
+
+## W2 B 增量：文档质量评估（rules-v1）
+
+本增量完成 #9 轻量质量检测，并接入统一摄入入口。检测结果写入已有
+`DocIR.meta.quality` 和 `kb_doc.meta` JSONB，不修改 BlockIR、ChunkIR、
+Citation、数据库表结构或 `content_hash()` 语义。
+
+检测项：
+
+- `orientation`：读取 PDF 页面旋转元数据，文档级字段取主方向；
+  `rotated_pages` 保留所有非零旋转页，页码为 1-based。
+- `skew`：根据原生文本行方向计算相对最近直角的偏差，文档级字段取最大值；
+  大于 1° 时产生 `skew_detected`。
+- `clarity`：以 1.5 倍灰度渲染页面，使用 Laplacian 方差衡量边缘清晰度，
+  平滑归一化到 0～1；文档平均值低于 0.35 时产生 `low_clarity`。
+- `has_text_layer`：保持既有语义，只要任一页存在原生文本即为 `true`；
+  `textless_pages` 单独记录所有无文本页。
+- `traditional_chars`：采用保守繁体专属字符集，仅作为风险提示；
+  简繁共用字符（例如“案”“描”）不得进入字符表。
+- `score`：综合文本页覆盖率、旋转页、倾斜度和清晰度，截断到 0～1。
+  繁体文本本身不降低质量分，只产生 `traditional_text` 提示。
+
+新增可选元数据形状：
+
+```json
+{
+  "quality": {
+    "version": "rules-v1",
+    "orientation": 0,
+    "skew": 0.0,
+    "clarity": 0.9707,
+    "has_text_layer": true,
+    "traditional_chars": false,
+    "textless_pages": [],
+    "rotated_pages": [],
+    "page_reports": [
+      {
+        "page": 1,
+        "orientation": 0,
+        "skew": 0.0,
+        "clarity": 0.9707,
+        "has_text_layer": true,
+        "traditional_chars": false
+      }
+    ],
+    "warnings": [],
+    "score": 0.9912
+  }
+}
+```
+
+能力边界：
+
+- 当前方向检测依赖 PDF rotation metadata，不推断缺少方向元数据的纯扫描图片。
+- 当前倾斜检测依赖原生文本行方向；纯扫描件需要后续 OCR/图像级检测。
+- 清晰度是用于路由和告警的启发式指标，不代表 OCR 字符准确率。
+- 繁简检测是保守风险信号，不承担全文简繁转换。
+- 损坏或加密 PDF 明确报错，不覆盖或删除已有索引。
+
+内容 hash 未变化时，摄入流程仅合并刷新 `quality`、`complexity` 和
+`complexity_details`，保留原有 chunk ID 与 embedding，不重新向量化。
+
+独立复现：
+
+```bash
+cd backend
+.venv/bin/python -m pytest tests/test_quality.py -q
+```
+
+验收证据（2026-09-27）：
+
+- 质量检测专项测试：9/9；
+- 全量测试：130 passed；
+- 现有四份 PDF 均无旋转、无倾斜、具备文本层且无繁体误报；
+- 幂等摄入：4 docs、38 chunks、0 new chunks；
+- 数据库：38/38 chunks 保留 embedding；
+- RAG 评测：retrieval hit@6 = 100%；
+- RAG 冒烟检索：8/8。
