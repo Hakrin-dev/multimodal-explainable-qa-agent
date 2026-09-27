@@ -139,7 +139,7 @@ raw file ──► 质量评估(#9) ──► 复杂度评分(#8) ──► 解�
 | MinerU / PaddleOCR 接入（扫描件路径） | ⬜ W2 | `parsers/mineru.py` 等 |
 | 目录信号融合 + LLM 层级判定（#7 完整版） | ⬜ 决赛 | `pdf_ingest` 扩展 |
 | 公式登记（#6） | ⬜ W2 | LLM 从 blocks 抽 LaTeX→FormulaIR |
-| 坏文档生成器（3 份，W2 演示用） | ⬜ W2 | `scripts/gen_bad_docs.py` |
+| 坏文档生成器（3 份，W2 演示用） | ✅ 目录结构缺失/旋转扫描/模糊繁体；解析修复闭环待接入 | `scripts/gen_bad_docs.py`；`tests/test_bad_docs.py` |
 
 ## 变更记录
 
@@ -283,3 +283,27 @@ cd backend
 - 数据库：38/38 chunks 保留 embedding；
 - RAG 评测：retrieval hit@6 = 100%；
 - RAG 冒烟检索：8/8。
+
+
+## W2 B 增量：三类坏文档测试资产
+
+新增三份与正常知识库隔离的固定测试资产：
+
+- `bad_missing_structure.pdf`：保留原生文本，但标题与正文使用同一字号，
+  不产生可靠 H1～H4，用于 #7 目录结构恢复；
+- `bad_rotated_scan.pdf`：图像型扫描页并带 90° PDF rotation metadata，
+  用于方向修复与 OCR 路由；
+- `bad_blurred_traditional.pdf`：低分辨率放大并模糊的繁体图像型扫描页，
+  用于清晰度、OCR 和繁简修复。
+
+资产存放于 `data/docs_bad/`，不会被正常的 `scripts/ingest_docs.py` 自动摄入。
+当前只完成缺陷资产生成和检测，不宣称 MinerU/OCR 修复闭环完成。
+
+验收结果（2026-09-27）：
+
+- 坏文档专项测试：5/5；
+- 相关测试：49 passed；
+- 全量测试：135 passed；
+- 旋转扫描和模糊繁体扫描均为复杂度 5，选择 `mineru`；
+- 目录结构缺失文档为复杂度 1，选择 `pymupdf`，但不产生可靠章节层级；
+- 模糊繁体样本在 OCR 前不伪造繁体识别结果。

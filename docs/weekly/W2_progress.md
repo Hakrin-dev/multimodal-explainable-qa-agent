@@ -238,3 +238,35 @@ git --no-pager diff --stat
 - 本次完成质量检测器，不宣称摄入流水线 v1 整体完成。
 - 尚待：MinerU/PaddleOCR 实际解析、三类坏文档生成与修复检索闭环、
   知识库扩至 10 份、GPU/BGE-M3/rerank、忠实度自检和公式登记。
+
+
+## B 增量（2026-09-27）：三类坏文档测试资产
+
+### 本次交付
+
+- 新增 `backend/scripts/gen_bad_docs.py`，程序化生成3类固定坏文档。
+- 新增 `backend/tests/test_bad_docs.py`，验证文件有效性、缺陷信号、
+  解析路由和结果确定性。
+- 新增 `data/docs_bad/`，与正常 `data/docs_raw/` 隔离，避免被默认摄入脚本误收录。
+- 目录结构缺失样本保留原生文本但不生成可靠 H1～H4。
+- 旋转扫描和模糊繁体扫描均无原生文本层，复杂度评分为5并路由至 MinerU。
+- 模糊繁体样本在 OCR 前不声称检测到繁体，符合当前能力边界。
+
+### 验收结果
+
+| 文档 | 质量信号 | 复杂度/路由 |
+|---|---|---|
+| bad_missing_structure | clarity=0.9616，score=0.9885，无质量告警，无可靠章节层级 | level 1 / pymupdf |
+| bad_rotated_scan | textless_pages=[1]，orientation=90，rotated_pages=[1] | level 5 / mineru |
+| bad_blurred_traditional | clarity=0.0254，textless_pages=[1]，low_clarity | level 5 / mineru |
+
+| 测试项 | 结果 |
+|---|---|
+| 坏文档专项 | 5 passed |
+| 坏文档+质量+复杂度+摄入 | 49 passed |
+| 全量测试 | 135 passed，5 warnings，0 failure |
+
+### 当前边界
+
+本次完成坏文档生成与检测基准，不包含自动修复。下一步是独立部署 MinerU，
+实现扫描件解析适配器，并将旋转、模糊繁体样本恢复为现有 `DocIR` 后重新检索。

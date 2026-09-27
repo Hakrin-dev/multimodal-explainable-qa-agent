@@ -3,9 +3,8 @@
 Usage: python scripts/gen_kb_docs.py [--out ../data/docs_raw]
 
 The generator is deterministic (same content -> same layout), so ingestion
-tests can rely on stable page/breadcrumb structure. B extends this in W2
-with the 3 deliberately-broken docs (目录丢失 / 页面颠倒扫描 / 模糊+繁体).
-"""
+tests can rely on stable page/breadcrumb structure. The three deliberately
+broken W2 fixtures are generated separately by scripts/gen_bad_docs.py.
 
 from __future__ import annotations
 
