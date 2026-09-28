@@ -12,8 +12,10 @@ from dataclasses import dataclass, field
 
 from .session import get_conn
 
-# Chinook public schema only.
+# Chinook public schema only — project/system tables stay out of prompts.
 _SYSTEM_SCHEMAS = ("pg_catalog", "information_schema")
+_PROJECT_TABLES = {"biz_term", "kb_doc", "kb_chunk", "trace_turn", "trace_event",
+                   "app_session"}
 
 
 @dataclass
@@ -45,7 +47,8 @@ class TableMeta:
                 for c in self.columns for fk in c.fks]
 
 
-def load_table_meta(table_names: list[str] | None = None) -> list[TableMeta]:
+def load_table_meta(table_names: list[str] | None = None,
+                    include_project_tables: bool = False) -> list[TableMeta]:
     """Read table/column/FK metadata + row counts from the live database."""
     tables: list[TableMeta] = []
     with get_conn() as conn, conn.cursor() as cur:
@@ -59,6 +62,8 @@ def load_table_meta(table_names: list[str] | None = None) -> list[TableMeta]:
             """
         )
         for name, comment in cur.fetchall():
+            if not include_project_tables and name in _PROJECT_TABLES:
+                continue
             if table_names is not None and name not in table_names:
                 continue
             tables.append(TableMeta(name=name, comment=comment or ""))

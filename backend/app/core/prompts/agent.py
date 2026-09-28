@@ -28,7 +28,12 @@ INTENT_STATIC = """\
  "confidence": 0.0-1.0,
  "slots": {"已识别到的要素": "值"},
  "missing_slots": ["缺失且必要的要素名"],
- "sub_tasks": ["HYBRID 时的子任务描述，按依赖顺序"]}"""
+ "options": {"缺失要素名": ["候选值1", "候选值2"]},
+ "sub_tasks": ["HYBRID 时的子任务描述，按依赖顺序"]}
+
+options 规则：当 intent 为 AMBIGUOUS 时，必须为每个缺失要素给出 2~4 个候选选项，
+候选值要具体可执行（如时间范围类：“今年 vs 去年”、“2024 vs 2023”；对比对象类：
+“销售额 vs 销量”）；若 intent 不是 AMBIGUOUS，options 输出 {}。"""
 
 
 def build_intent_messages(question: str, history: list[dict] | None = None,

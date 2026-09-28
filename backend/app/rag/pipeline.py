@@ -20,7 +20,10 @@ from ..core.llm import LLMService, get_llm_service
 from ..core.prompts import rag as prompts
 from ..core.tracing import NodeType, TraceCollector
 from ..ingestion import chunker, pdf_ingest
+from ..ingestion.complexity import assess_pdf
+from ..ingestion.parsers import mineru as mineru_parser
 from ..ingestion.ir import DocIR
+from ..ingestion.quality import assess_quality
 from .embedding import EmbeddingService, get_embedding_service
 from .retriever import ChunkHit, HybridRetriever
 from .store import KBStore
@@ -37,17 +40,36 @@ class RAGResult:
     latency_ms: int = 0
 
 
-def ingest_document(path: str, store: KBStore | None = None,
-                    embedding: EmbeddingService | None = None,
-                    force: bool = False) -> tuple[DocIR, int]:
-    """Parse → chunk → embed → store. Skips unchanged docs (content hash)."""
+def ingest_document(
+    path: str,
+    store: KBStore | None = None,
+    embedding: EmbeddingService | None = None,
+    force: bool = False,
+) -> tuple[DocIR, int]:
+    """Assess quality/complexity → route → parse → chunk → embed → store."""
+    quality = assess_quality(path)
+    assessment = assess_pdf(path)
+
+    if assessment.parser == "pymupdf":
+        doc = pdf_ingest.parse_pdf(path)
+    elif assessment.parser == "mineru":
+        doc = mineru_parser.parse_pdf(path)
+    else:
+        raise ValueError(f"unsupported parser route: {assessment.parser}")
+
+    doc.meta.update(quality.metadata())
+    doc.meta.update(assessment.metadata())
+
+    chunker.chunk_doc(doc)
+    if not doc.chunks:
+        raise ValueError("PDF produced no chunks; existing index was left untouched")
+
     embedding = embedding or get_embedding_service()
     store = store or KBStore(dim=embedding.dim)
-    doc = pdf_ingest.parse_pdf(path)
-    chunker.chunk_doc(doc)
 
     if not force and store.doc_content_hash(doc.doc_id) == doc.content_hash():
-        return doc, 0  # unchanged, skip
+        if store.update_assessment(doc):
+            return doc, 0  # unchanged chunks; refresh metadata without re-embedding
 
     embeddings = embedding.embed([c.text for c in doc.chunks])
     store.upsert_doc(doc, chunk_embeddings=np.asarray(embeddings))
@@ -72,14 +94,23 @@ class RAGPipeline:
     # ------------------------------------------------------------------ api
 
     def run(self, question: str, trace: TraceCollector | None = None,
-            top_k: int = 6) -> RAGResult:
+            top_k: int = 6, parent=None) -> RAGResult:
+        """parent: kernel's tool_call node. When given, this pipeline's steps
+        nest under it directly (no double rag_search wrapping)."""
         trace = trace or TraceCollector(question=question)
         t0 = time.monotonic()
         result = RAGResult(question=question)
         self.ensure_loaded()
 
-        # ① retrieve
-        with trace.span("rag_search", NodeType.TOOL_CALL, input=question) as node:
+        # ① retrieve — own tool_call span only when standalone (no double wrap)
+        node = None
+        if parent is None:
+            cm = trace.span("rag_search", NodeType.TOOL_CALL, input=question)
+        else:
+            from contextlib import nullcontext
+            cm = nullcontext(parent)
+        with cm as n:
+            node = n
             hits: list[ChunkHit] = self.retriever.search(question, top_k=top_k)
             result.citations = [h.citation() for h in hits]
             result.hits = [
@@ -88,9 +119,13 @@ class RAGPipeline:
                  "text": h.chunk.text[:200]}
                 for h in hits
             ]
-            trace.finish(node, output=f"{len(hits)} chunks",
-                         detail={"citations": result.citations[:8],
-                                 "hit_count": len(hits)})
+            if parent is None:   # kernel finishes its own node later
+                trace.finish(node, output=f"{len(hits)} chunks",
+                             detail={"citations": result.citations[:8],
+                                     "hit_count": len(hits)})
+            else:                # enrich the kernel's node with citations
+                node.detail.setdefault("citations", result.citations[:8])
+                node.detail["hit_count"] = len(hits)
 
         if not hits:
             result.status = "no_context"
@@ -100,7 +135,7 @@ class RAGPipeline:
             return result
 
         # ② cited generation
-        with trace.span("rag_generate", NodeType.STEP) as node:
+        with trace.span("rag_generate", NodeType.STEP, parent=parent) as node:
             chunks_payload = [
                 {"idx": i + 1, "doc": h.chunk.doc_name, "page": h.chunk.page_start,
                  "breadcrumb": " > ".join(h.chunk.breadcrumb), "text": h.chunk.text}

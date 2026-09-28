@@ -25,6 +25,8 @@ from ..core.tracing import NodeStatus, NodeType, TraceCollector
 from .intent import IntentClassifier, IntentResult
 from .memory import SessionStore, get_session_store
 from .planner import Planner, build_fuse_messages
+from .rewrite import CoreferenceRewriter
+from .slots import SlotMatrix
 from .tools import ToolRegistry, ToolResult, default_registry
 
 EventCallback = Callable[[str, dict], None]
@@ -38,6 +40,7 @@ class TurnResult:
     answer: str = ""
     intent: str = ""
     status: str = "ok"            # ok | clarify | degraded | error
+    rewritten: str = ""           # 指代消解后的自包含问题（多轮改写对照，前端展示）
     data: dict[str, Any] = field(default_factory=dict)     # tool payloads
     citations: list[dict] = field(default_factory=list)
     clarify: dict[str, Any] = field(default_factory=dict)
@@ -47,14 +50,18 @@ class TurnResult:
 
 
 class AgentKernel:
+    CLARIFY_TTL_SECONDS = 600   # stale clarifications don't shadow fresh turns
     def __init__(self, llm: LLMService | None = None,
                  registry: ToolRegistry | None = None,
-                 sessions: SessionStore | None = None):
+                 sessions: SessionStore | None = None,
+                 slot_matrix: SlotMatrix | None = None):
         self.llm = llm or get_llm_service()
         self.registry = registry or default_registry()
         self.sessions = sessions or get_session_store()
         self.classifier = IntentClassifier(self.llm)
         self.planner = Planner(self.llm)
+        self.rewriter = CoreferenceRewriter(self.llm)
+        self.slots = slot_matrix if slot_matrix is not None else SlotMatrix.load()
 
     # ------------------------------------------------------------------ api
 
@@ -67,12 +74,27 @@ class AgentKernel:
         session = self.sessions.get(session_id)
         history = session.messages[-6:]
         pending = session.pending_clarify
+        # clarify TTL: stale suspensions don't shadow fresh questions
+        if pending and isinstance(pending, dict) and pending.get("_ts"):
+            if time.time() - pending["_ts"] > self.CLARIFY_TTL_SECONDS:
+                pending = None
+                self.sessions.set_pending_clarify(session_id, None)
 
-        emit("turn.start", {"question": question, "session_id": session_id,
-                            "resumed_clarify": bool(pending)})
+        emit("turn.start", {"turn_id": trace.turn_id, "question": question,
+                             "session_id": session_id,
+                             "resumed_clarify": bool(pending)})
 
-        # ① intent (history-aware; a clarify reply resolves to a full intent)
-        with trace.span("intent", NodeType.INTENT, input=question) as node:
+        # ⓪ coreference rewrite (§4.6): follow-up → standalone question
+        rw = self.rewriter.rewrite(question, history)
+        if rw.changed:
+            with trace.span("rewrite", NodeType.STEP, input=question) as node:
+                trace.finish(node, output=rw.question,
+                             detail={"rewrites": rw.rewrites, "method": "coreference"})
+            emit("trace.node", _node_event(trace, node))
+        effective_question = rw.question
+
+        # ① intent (on the standalone question; history still available)
+        with trace.span("intent", NodeType.INTENT, input=effective_question) as node:
             ir: IntentResult = self.classifier.classify(question, history)
             trace.finish(node, output={"intent": ir.intent,
                                        "confidence": ir.confidence,
@@ -81,29 +103,60 @@ class AgentKernel:
                                  "missing_slots": ir.missing_slots})
         emit("trace.node", _node_event(trace, node))
 
-        # ② route
+        # ①' slot matrix (§4.7, deterministic): pattern rules may override an
+        # over-confident DB_QUERY into clarify, or enrich clarify options
+        verdict = self.slots.check(effective_question)
+        if verdict.triggered and verdict.missing:
+            if ir.intent in ("DB_QUERY", "HYBRID") and not ir.needs_clarification:
+                ir = IntentResult(intent="AMBIGUOUS", confidence=0.9,
+                                  missing_slots=verdict.missing,
+                                  options=verdict.options,
+                                  raw={"source": "slot_matrix", "hint": verdict.intent_hint})
+                with trace.span("slot_check", NodeType.STEP,
+                                input=effective_question) as snode:
+                    trace.finish(snode, status=NodeStatus.OK, output={
+                        "override": "DB_QUERY->AMBIGUOUS",
+                        "missing_slots": verdict.missing},
+                        detail={"rule": verdict.intent_hint})
+                emit("trace.node", _node_event(trace, snode))
+            elif ir.needs_clarification:
+                for slot, opts in verdict.options.items():
+                    if opts and not ir.options.get(slot):
+                        ir.options[slot] = opts
+
+        # ② route (downstream gets the standalone question)
         if ir.needs_clarification:
-            result = self._clarify(trace, emit, question, ir)
+            result = self._clarify(trace, emit, effective_question, ir)
         elif ir.intent == "CHAT":
-            result = self._chat(trace, emit, question, history)
+            result = self._chat(trace, emit, effective_question, history)
         elif ir.intent == "DB_QUERY":
-            result = self._tool_turn(trace, emit, question, "nl2sql", history)
+            result = self._tool_turn(trace, emit, effective_question, "nl2sql", history)
         elif ir.intent == "DOC_QUERY":
-            result = self._tool_turn(trace, emit, question, "rag_search", history)
+            result = self._tool_turn(trace, emit, effective_question, "rag_search", history)
         elif ir.intent == "HYBRID":
-            result = self._hybrid(trace, emit, question)
+            result = self._hybrid(trace, emit, effective_question)
         else:  # unknown — honest failure
             result = TurnResult(question=question, status="error",
                                 answer="未能识别该请求的意图。")
             result.intent = ir.intent
 
         result.intent = ir.intent
+        result.rewritten = effective_question if rw.changed else ""
         result.trace = trace.to_dict()
         result.latency_ms = int((time.monotonic() - t0) * 1000)
         result.cost_rmb = _turn_cost(trace)
 
+        # durability: trace tree -> PG (best-effort; enables /api/trace/{id})
+        if self.sessions.persist:
+            from . import persistence
+            persistence.save_turn(trace, session_id, summary={
+                "intent": result.intent, "status": result.status,
+                "latency_ms": result.latency_ms, "cost_rmb": result.cost_rmb,
+                "answer": result.answer[:300]})
+
         # memory bookkeeping: suspend or clear clarify state, then log the turn
         if result.status == "clarify" and self._pending_store:
+            self._pending_store["_ts"] = time.time()   # TTL anchor (§4.7)
             self.sessions.set_pending_clarify(session_id, self._pending_store)
             self._pending_store = None
         elif result.status != "clarify":
@@ -121,24 +174,29 @@ class AgentKernel:
         messages = ([{"role": "system", "content": CHAT_SYSTEM}] + history[-4:]
                     + [{"role": "user", "content": question}])
         with trace.span("chat_generate", NodeType.STEP) as node:
-            resp = self.llm.chat(messages, temperature=0.5, max_tokens=300,
-                                 purpose="agent.chat")
+            resp = None
+            for chunk in self.llm.chat_stream(messages, temperature=0.5,
+                                              max_tokens=300, purpose="agent.chat"):
+                if chunk.delta:
+                    emit("answer.delta", {"text": chunk.delta})
+                if chunk.response is not None:
+                    resp = chunk.response
             _llm_child(trace, node, resp)
-            trace.finish(node, output=resp.content[:200])
+            trace.finish(node, output=(resp.content if resp else "")[:200])
         emit("trace.node", _node_event(trace, node))
-        emit("answer.delta", {"text": resp.content})
-        return TurnResult(question=question, answer=resp.content)
+        return TurnResult(question=question,
+                          answer=resp.content if resp else "")
 
     def _tool_turn(self, trace, emit, question, tool_name,
                    history: list[dict] | None = None) -> TurnResult:
         spec = self.registry.get(tool_name)
         with trace.span(tool_name, NodeType.TOOL_CALL, input=question) as node:
             tr: ToolResult = spec.handler(question=question, trace=trace,
-                                          history=history)
-            status = NodeStatus.OK if tr.ok else NodeStatus.DEGRADED
-            trace.finish(node, status=status,
-                         output=("ok" if tr.ok else tr.degraded_reason)[:200],
-                         detail={"degraded": not tr.ok})
+                                          history=history, parent=node)
+            if node.status == NodeStatus.PENDING:   # tool may have set it
+                node.status = NodeStatus.OK if tr.ok else NodeStatus.DEGRADED
+            node.output = (("ok" if tr.ok else tr.degraded_reason))[:200]
+            node.detail["degraded"] = not tr.ok
         emit("trace.node", _node_event(trace, node))
 
         if not tr.ok:
@@ -166,10 +224,14 @@ class AgentKernel:
                           citations=citations)
 
     def _hybrid(self, trace, emit, question) -> TurnResult:
+        """DAG execution (v1.2): topological waves — independent sub-tasks run
+        concurrently (ThreadPoolExecutor), dependents wait on {tN.result}."""
         with trace.span("plan", NodeType.PLAN, input=question) as node:
             tasks = self.planner.plan(question, self.registry.inventory)
-            trace.finish(node, output={"n_tasks": len(tasks)},
-                         detail={"sub_tasks": tasks})
+            edges = [{"from": d, "to": t["id"]}
+                     for t in tasks for d in t["depends_on"]]
+            trace.finish(node, output={"n_tasks": len(tasks), "n_edges": len(edges)},
+                         detail={"sub_tasks": tasks, "edges": edges})
         emit("trace.node", _node_event(trace, node))
 
         if not tasks:
@@ -177,47 +239,79 @@ class AgentKernel:
             emit("answer.delta", {"text": answer})
             return TurnResult(question=question, status="degraded", answer=answer)
 
-        sub_results: list[dict] = []
-        for i, task in enumerate(tasks, 1):
-            q = task["question"]
-            # v1 linear chaining: {上一步结果} binds to the LAST completed step
-            if sub_results and "{上一步结果}" in q:
-                prev = sub_results[-1]["result"]
-                q = q.replace("{上一步结果}",
-                              str(prev.get("summary") or prev.get("answer")
-                                  or prev.get("error", ""))[:300])
+        results: dict[str, dict] = {}     # task_id -> {"tool","question","result"}
+        remaining = {t["id"]: t for t in tasks}
+        order = {t["id"]: i for i, t in enumerate(tasks, 1)}
+
+        def substitute(q: str) -> str:
+            def _ref(sr: dict) -> str:
+                # compact entity-first reference (full summaries dilute retrieval)
+                r = sr["result"]
+                return str(r.get("key") or r.get("summary") or r.get("answer")
+                           or r.get("error", ""))[:120]
+            for tid, sr in results.items():
+                q = q.replace(f"{{{tid}.result}}", _ref(sr))
+            # legacy placeholder binds to the latest completed task
+            if "{上一步结果}" in q and results:
+                latest = max(results, key=lambda t: order.get(t, 0))
+                q = q.replace("{上一步结果}", _ref(results[latest]))
+            return q
+
+        def run_task(task: dict) -> None:
+            q = substitute(task["question"])
             spec = self.registry.get(task["tool"])
-            with trace.span(f"subtask_{i}:{task['tool']}", NodeType.TOOL_CALL,
-                            input=q) as node:
-                tr = spec.handler(question=q, trace=trace)
-                trace.finish(node, status=NodeStatus.OK if tr.ok else NodeStatus.DEGRADED,
-                             output=None, detail={"degraded": not tr.ok})
+            label = f"subtask_{order[task['id']]}:{task['tool']}"
+            with trace.span(label, NodeType.TOOL_CALL, input=q) as node:
+                tr = spec.handler(question=q, trace=trace, parent=node)
+                trace.finish(node,
+                             status=NodeStatus.OK if tr.ok else NodeStatus.DEGRADED,
+                             output=None,
+                             detail={"degraded": not tr.ok, "task_id": task["id"]})
             emit("trace.node", _node_event(trace, node))
-            sub_results.append({
+            results[task["id"]] = {
                 "tool": task["tool"], "question": q,
                 "result": tr.data if tr.ok else {"error": tr.degraded_reason},
-            })
+            }
+
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            while remaining:
+                # wave = tasks whose deps are all satisfied
+                wave = [t for tid, t in remaining.items()
+                        if all(d in results for d in t["depends_on"])]
+                if not wave:   # cycle / broken deps — run rest sequentially
+                    wave = list(remaining.values())
+                futures = [pool.submit(run_task, t) for t in wave]
+                for t in wave:
+                    remaining.pop(t["id"])
+                for f in futures:
+                    f.result()
+        sub_results = [results[t["id"]] for t in tasks]   # plan order preserved
 
         with trace.span("fuse", NodeType.FUSE) as node:
             messages = build_fuse_messages(question, sub_results)
-            resp = self.llm.chat(messages, temperature=0.3, max_tokens=500,
-                                 purpose="agent.fuse")
+            resp = None
+            for chunk in self.llm.chat_stream(messages, temperature=0.3,
+                                              max_tokens=500, purpose="agent.fuse"):
+                if chunk.delta:
+                    emit("answer.delta", {"text": chunk.delta})
+                if chunk.response is not None:
+                    resp = chunk.response
             _llm_child(trace, node, resp)
-            trace.finish(node, output=resp.content[:300])
+            trace.finish(node, output=(resp.content if resp else "")[:300])
         emit("trace.node", _node_event(trace, node))
-        emit("answer.delta", {"text": resp.content})
 
         citations = [c for sr in sub_results
                      for c in (sr["result"].get("citations") or [])]
-        return TurnResult(question=question, answer=resp.content,
+        return TurnResult(question=question,
+                          answer=resp.content if resp else "",
                           data={"sub_results": [
                               {"tool": sr["tool"], "question": sr["question"]}
                               for sr in sub_results]},
                           citations=citations)
 
     def _clarify(self, trace, emit, question, ir: IntentResult) -> TurnResult:
-        options = ir.raw.get("options") or {}
-        payload = {"missing_slots": ir.missing_slots, "options": options,
+        payload = {"missing_slots": ir.missing_slots, "options": ir.options,
                    "question": question}
         with trace.span("clarify", NodeType.CLARIFY, input=question) as node:
             trace.finish(node, output=payload, detail=payload)
@@ -225,7 +319,6 @@ class AgentKernel:
         emit("clarify.request", payload)
 
         # suspend: store pending state; next turn the history drives resume
-        # (session_id is set by run() caller context — stored via kernel field)
         self._pending_store = payload
         answer = _clarify_question(ir)
         emit("answer.delta", {"text": answer})
@@ -279,9 +372,8 @@ def _fallback_summary(data: dict) -> str:
 def _clarify_question(ir: IntentResult) -> str:
     slots = "、".join(ir.missing_slots)
     q = f"这个问题还需要补充信息：{slots}。"
-    options = ir.raw.get("options") or {}
-    if options:
-        first = next(iter(options.values()))
+    if ir.options:
+        first = next(iter(ir.options.values()))
         if isinstance(first, list) and first:
             q += "可选：" + " / ".join(str(x) for x in first[:5])
     return q

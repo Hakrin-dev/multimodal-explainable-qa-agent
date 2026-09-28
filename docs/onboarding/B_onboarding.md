@@ -49,16 +49,13 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m pytest tests/ -q        # 测试应全绿（RAG 集成项会 SKIP，见下一行）
 
-# 下载本地嵌入模型（不入 git，干净状态下必须做这一步，否则 RAG 路径 SKIP）：
-cd .. && mkdir -p models
-cd backend && HF_ENDPOINT=https://hf-mirror.com .venv/bin/python - <<'EOF'
-from huggingface_hub import snapshot_download
-import os
-print(snapshot_download("BAAI/bge-small-zh-v1.5",
-      local_dir=os.path.abspath("../models/bge-small-zh-v1.5")))
-EOF
-.venv/bin/python -m pytest tests/ -q        # 现在应 41 项全过（含 RAG 集成）
-.venv/bin/python scripts/ingest_docs.py     # 首次摄入知识库（建 kb_doc/kb_chunk 表）
+# 下载本地嵌入模型（不入 git；**2026-09-26 更新：A 已下载就位，可跳过此步**）
+# 若需重建：HF_ENDPOINT=https://hf-mirror.com HF_HUB_DISABLE_XET=1 .venv/bin/python -c \
+#   "from huggingface_hub import snapshot_download; import os; \
+#    print(snapshot_download('BAAI/bge-small-zh-v1.5', local_dir=os.path.abspath('../models/bge-small-zh-v1.5')))"
+# 注：hf-mirror 需禁用 Xet（HF_HUB_DISABLE_XET=1），否则 CDN 401
+.venv/bin/python -m pytest tests/ -q        # 现在应 63 项全过（含 RAG 集成）
+.venv/bin/python scripts/ingest_docs.py     # 知识库已由 A 摄入（4 文档 38 chunks），幂等可重跑
 ```
 
 ---

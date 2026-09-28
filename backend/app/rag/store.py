@@ -118,6 +118,30 @@ class KBStore:
                          chunk.breadcrumb, chunk.text, emb.tolist()),
                     )
 
+    def update_assessment(self, doc: DocIR) -> bool:
+        """Refresh owned metadata, preserving chunks and unrelated metadata.
+
+        Match the hash again so concurrent content changes cannot receive an
+        assessment computed for different content.
+        """
+        owned_keys = ("quality", "complexity", "complexity_details")
+        metadata = {key: doc.meta[key] for key in owned_keys if key in doc.meta}
+
+        if not metadata:
+            return False
+
+        with get_conn(readonly=False) as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE kb_doc SET meta = meta || %s::jsonb"
+                " WHERE doc_id = %s AND content_hash = %s",
+                (
+                    json.dumps(metadata, ensure_ascii=False),
+                    doc.doc_id,
+                    doc.content_hash(),
+                ),
+            )
+            return cur.rowcount == 1
+
     def doc_content_hash(self, doc_id: str) -> str | None:
         with get_conn() as conn, conn.cursor() as cur:
             cur.execute("SELECT content_hash FROM kb_doc WHERE doc_id = %s", (doc_id,))

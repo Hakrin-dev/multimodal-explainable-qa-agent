@@ -62,8 +62,37 @@ question ──► ① intent（LLM 结构化输出，history-aware，JSON 解�
 
 ## 6. W2 待办（在 v1 骨架上增量）
 
-- [ ] 会话/Trace 落 PG（`trace_event` 表 = flat_events 形态，`session` 表）
-- [ ] LLM 真流式 → answer.delta 逐段推送（前端联调时）
-- [ ] 槽位矩阵外置配置（`data/` 下 YAML：问题类型→必要槽位→候选选项）
-- [ ] HYBRID 真 DAG（并行子任务 + 依赖编排）
-- [ ] 澄清多轮（>1 次追问）与澄清超时清理
+- [x] ~~会话/Trace 落 PG~~（D4 完成：`persistence.py`，trace_turn/trace_event/app_session 三表，best-effort 写入 + 跨重启恢复）
+- [x] ~~LLM 真流式~~（D4 完成：`LLMService.chat_stream`，CHAT/fuse 逐 token；SSE 改实时队列转发，实测 45 增量/轮）
+- [x] ~~GET /api/trace/{id} + /api/docs/{id}/pdf~~（D4 完成，C 的四个需求全部闭环）
+- [x] ~~Trace 嵌套结构修正~~（D4 发现并修复：流水线步骤曾平铺在根下；现在 tool_call 下挂子树，rag 双重包裹已消除）
+- [x] ~~槽位矩阵外置配置~~（W2-D2 完成：`data/slot_matrix.json` + `agent/slots.py`；
+      模式规则 + `satisfied_by` 证据正则；过度自信 DB_QUERY 的确定性覆写 + AMBIGUOUS 选项增强；
+      新领域 = 改 JSON 零代码）
+- [x] ~~指代消解改写~~（W2-D2 完成：`agent/rewrite.py`，`agent.rewrite` 家族已注册；
+      改写对照进 Trace detail.rewrites + TurnResult.rewritten 供 UI 展示）
+- [x] ~~澄清超时清理~~（W2-D2 完成：挂起态带 `_ts`，TTL 600s，过期不再遮蔽新问题）
+- [x] ~~HYBRID 真 DAG~~（W2-D3 完成：planner 产出 id/depends_on 任务图，拓扑波次并行执行（ThreadPoolExecutor×3），{tN.result} 占位符驱动依赖边，环容错回退；实测独立双源并发 4.6s、依赖链实体紧凑注入命中目标 chunk）
+- [ ] 澄清多轮（>1 次追问）
+
+## 8. W2-D3 HYBRID DAG 执行（v1.2）
+
+```
+plan → [{id, tool, question, depends_on}] + edges 入 Trace
+  → 拓扑波次：in-degree 0 的任务并发（max 3 workers）
+  → 依赖任务等待上游完成后做占位符替换（紧凑实体 key 优先，防检索稀释）
+  → fan-in fuse（分区溯源）
+```
+教训记录：① DAG 重写时丢了 parent 传递导致子任务流水线平铺（测试守护住了嵌套断言）；
+② 长摘要注入 RAG 查询会稀释检索——占位符注入用首行字符串单元格（实体名）。
+
+## 7. W2-D2 新增执行流（v1.1）
+
+```
+question → [history 非空?] → ⓪ 指代消解改写（trace: rewrite, 对照入档）
+         → ① intent（对自包含问题分类）
+         → ①' 槽位矩阵（模式命中 + satisfied_by 校验）
+              ├─ LLM 过度自信(DB_QUERY/HYBRID) + 缺槽 → 覆写 AMBIGUOUS（trace: slot_check）
+              └─ LLM 已 AMBIGUOUS → 矩阵选项补强
+         → ② 路由（下游全部使用自包含问题）
+```

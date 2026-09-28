@@ -1,11 +1,12 @@
-"""NL2SQL pipeline v0 — W1 minimal closed loop (single-table focus):
+"""NL2SQL pipeline v1 — W3: schema linking compression + LLM rerank + join-path
+injection + empty-result attribution on the W1/W2 skeleton:
 
-    question → ① rewrite (term linking) → ② schema context → ③ SQL generate
-    (dual output: analysis draft + SQL) → ④ sqlglot validate → ⑤ execute
-    → repair loop (≤3) → ⑥ summarize + chart hint
+    question → ① rewrite (term linking) → ② schema context (linking v0 + LLM
+    rerank v1) → ③ SQL generate (dual output: analysis draft + SQL)
+    → ④ sqlglot validate → ⑤ execute → repair loop (≤3) → ⑥ empty attribution
+    → ⑦ summarize + chart hint
 
-Every step records TraceNode(s). W3 adds schema linking compression,
-join-path injection and empty-result attribution on this same skeleton.
+Every step records TraceNode(s).
 """
 
 from __future__ import annotations
@@ -73,6 +74,7 @@ class NL2SQLResult:
     summary: str = ""
     chart_hint: str | None = None
     status: str = "ok"  # ok | empty | error | needs_clarification
+    empty_attribution: dict | None = None  # W3: 空结果归因 (§4.2 ⑥-5)
     errors: list[str] = field(default_factory=list)
     repair_rounds: int = 0
     trace: dict[str, Any] = field(default_factory=dict)
@@ -89,24 +91,63 @@ class NL2SQLPipeline:
     # ------------------------------------------------------------------ api
 
     def run(self, question: str, trace: TraceCollector | None = None,
-            history: list[dict] | None = None) -> NL2SQLResult:
+            history: list[dict] | None = None,
+            parent=None) -> NL2SQLResult:
+        """parent: the kernel's tool_call node — pipeline steps nest under it
+        (contract: tool_call 节点下挂流水线子树). Standalone calls pass None."""
         trace = trace or TraceCollector(question=question)
         t0 = time.monotonic()
         result = NL2SQLResult(question=question)
 
+        def _p(default=None):
+            return parent if parent is not None else default
+
         # ① rewrite (term linking)
-        with trace.span("rewrite", NodeType.STEP, input=question) as node:
+        with trace.span("rewrite", NodeType.STEP, parent=_p(), input=question) as node:
             rw = rewriter.rewrite(question)
             result.rewritten = rw.question
             trace.finish(node, output=rw.question,
                          detail={"rewrites": rw.rewrites} if rw.rewrites else {})
 
-        # ② schema context (W1: full 11-table DDL + samples; W3: compressed)
-        with trace.span("schema_context", NodeType.STEP, input=None) as node:
+        # ② schema context: W3 #4 compression via Schema Linking (ablation-capable)
+        with trace.span("schema_context", NodeType.STEP, parent=_p(), input=None) as node:
             tables = schema_meta.load_table_meta()
-            schema_ctx = schema_meta.build_schema_context(tables, with_samples=True)
+            if self.settings.schema_linking:
+                from .schema_linking import SchemaLinker, build_compressed_context
+                linker = SchemaLinker()
+                linking = linker.link(result.rewritten or question)
+                reranked = False
+                if self.settings.schema_linking_rerank and len(linking.selected) > 1:
+                    with trace.span("link_rerank", NodeType.STEP, parent=node,
+                                    input=result.rewritten or question) as rnode:
+                        before = list(linking.selected)
+                        linking = linker.rerank(result.rewritten or question, linking,
+                                                llm=self.llm, trace=trace, parent=rnode)
+                        reranked = linking.selected != before
+                        trace.finish(rnode,
+                                     output=f"{len(before)}->{len(linking.selected)} tables",
+                                     detail={"before": before, "after": linking.selected,
+                                             "dropped": sorted(set(before) - set(linking.selected))})
+                colmap = linker.column_link(result.rewritten or question,
+                                            linking.selected)
+                schema_ctx = build_compressed_context(linking.selected, colmap)
+                if linking.join_paths:
+                    schema_ctx += ("\n\n【Join 路径（只允许使用这些关联）】\n"
+                                   + "\n".join(linking.join_paths))
+                full_ctx = schema_meta.build_schema_context(tables, with_samples=True)
+                trace.finish(node, output=f"{len(linking.selected)}/{len(tables)} tables",
+                             detail={
+                                 "selected_tables": linking.selected,
+                                 "recalled": linking.recalled,
+                                 "join_paths": linking.join_paths,
+                                 "reranked": reranked,
+                                 "relevant_columns": colmap,
+                                 "tokens_full": len(full_ctx) // 4,
+                                 "tokens_compressed": len(schema_ctx) // 4})
+            else:
+                schema_ctx = schema_meta.build_schema_context(tables, with_samples=True)
+                trace.finish(node, output=f"{len(tables)} tables (linking off)")
             schema_dict = {t.name: {c.name: c.type for c in t.columns} for t in tables}
-            trace.finish(node, output=f"{len(tables)} tables loaded")
 
         # ③④⑤ generate / validate / execute with repair loop
         feedback: str | None = None
@@ -114,7 +155,7 @@ class NL2SQLPipeline:
         top_n = topn_requirement(result.rewritten or question)
         for round_no in range(1, MAX_REPAIR_ROUNDS + 1):
             gen = self._generate(trace, schema_ctx, result.rewritten or question,
-                                 history, feedback)
+                                 history, feedback, parent=_p())
             result.analysis = gen.get("analysis", result.analysis)
             last_sql = gen.get("sql", "")
             if not last_sql:
@@ -125,14 +166,16 @@ class NL2SQLPipeline:
                 result.latency_ms = int((time.monotonic() - t0) * 1000)
                 return result
 
-            vres = self._validate(trace, last_sql, SQLValidator(schema_dict, self.max_rows))
+            vres = self._validate(trace, last_sql, SQLValidator(schema_dict, self.max_rows),
+                                  parent=_p())
 
             # TOP-N heuristic (mt-002 lesson): question demands 前N but SQL lacks
             # LIMIT — not a syntax error, only detectable against the question text
             if vres.ok and top_n and not re.search(r"\bLIMIT\b", vres.sql, re.I):
                 vres = vres.__class__(ok=False, errors=[
                     f"问题要求前 {top_n} 个结果，但 SQL 缺少 LIMIT {top_n}，请修正"])
-                with trace.span("sql_validate", NodeType.STEP, input=last_sql) as hnode:
+                with trace.span("sql_validate", NodeType.STEP, parent=_p(),
+                                input=last_sql) as hnode:
                     trace.finish(hnode, status=NodeStatus.ERROR, detail={
                         "sql": last_sql, "valid": False, "heuristic": "topn-limit",
                         "errors": vres.errors})
@@ -143,26 +186,60 @@ class NL2SQLPipeline:
                 result.errors.extend(vres.errors)
                 continue
 
-            eres = self._execute(trace, vres.sql)
+            eres = self._execute(trace, vres.sql, parent=_p())
             if not eres.ok:
                 result.repair_rounds = round_no
                 feedback = f"SQL: {vres.sql}\n执行错误: {eres.error[:500]}"
                 result.errors.append(eres.error[:300])
                 continue
 
-            # success
+            # success — semantic emptiness: COUNT(*) over an empty set still
+            # returns ONE row (value 0), same for MAX/MIN → NULL. W3 fix: such
+            # results route into empty-result attribution, not "ok".
             result.sql = vres.sql
             result.columns, result.rows = eres.columns, eres.rows
             result.row_count, result.truncated = eres.row_count, eres.truncated
-            result.status = "ok" if eres.row_count else "empty"
+            result.status = ("ok" if eres.row_count
+                             and not _is_semantically_empty(eres.columns, eres.rows)
+                             else "empty")
             break
         else:
             result.status = "error"
             result.sql = last_sql
 
-        # ⑥ summarize
+        # ⑥ empty-result attribution (§4.2 ⑥-5): 真无数据 vs 查询可疑
+        if result.status == "empty":
+            attribution = self._attribute_empty(trace, result.sql, last_feedback=feedback,
+                                                parent=_p())
+            result.empty_attribution = attribution
+            if attribution.get("verdict") == "suspicious_filter" and result.repair_rounds < MAX_REPAIR_ROUNDS:
+                # one targeted repair round with the evidence as feedback
+                fb = attribution.get("evidence_note", "")
+                gen = self._generate(trace, schema_ctx, result.rewritten or question,
+                                     history, fb, parent=_p())
+                sql2 = gen.get("sql", "")
+                if sql2:
+                    vres2 = self._validate(trace, sql2, SQLValidator(schema_dict, self.max_rows),
+                                           parent=_p())
+                    if vres2.ok:
+                        eres2 = self._execute(trace, vres2.sql, parent=_p())
+                        if eres2.ok and eres2.row_count:
+                            result.sql = vres2.sql
+                            result.columns, result.rows = eres2.columns, eres2.rows
+                            result.row_count, result.truncated = eres2.row_count, eres2.truncated
+                            result.status = "ok"
+                            result.repair_rounds += 1
+                        elif eres2.ok:
+                            result.sql = vres2.sql
+                            result.empty_attribution = {**attribution,
+                                                        "verdict": "truly_no_data",
+                                                        "note": "修正后仍为空 → 判定真无数据"}
+
+        # ⑦ summarize
         if result.status == "ok":
-            self._summarize(trace, result)
+            self._summarize(trace, result, parent=_p())
+        elif result.status == "empty":
+            self._summarize_empty(trace, result, parent=_p())
 
         result.trace = trace.to_dict()
         result.latency_ms = int((time.monotonic() - t0) * 1000)
@@ -171,9 +248,10 @@ class NL2SQLPipeline:
     # ------------------------------------------------------------- internals
 
     def _generate(self, trace: TraceCollector, schema_ctx: str, question: str,
-                  history: list[dict] | None, feedback: str | None) -> dict:
+                  history: list[dict] | None, feedback: str | None,
+                  parent=None) -> dict:
         with trace.span("sql_gen" if not feedback else "sql_repair",
-                        NodeType.STEP, input=question) as node:
+                        NodeType.STEP, parent=parent, input=question) as node:
             messages = prompts.build_messages(schema_ctx, question, history, feedback)
             resp = self.llm.chat(messages, temperature=0.0,
                                  purpose="nl2sql.generate")
@@ -207,16 +285,17 @@ class NL2SQLPipeline:
             sql = ""
         return {"analysis": analysis, "sql": sql}
 
-    def _validate(self, trace: TraceCollector, sql: str, validator: SQLValidator):
-        with trace.span("sql_validate", NodeType.STEP, input=sql) as node:
+    def _validate(self, trace: TraceCollector, sql: str, validator: SQLValidator,
+                  parent=None):
+        with trace.span("sql_validate", NodeType.STEP, parent=parent, input=sql) as node:
             vres = validator.validate(sql)
             trace.finish(node, output=vres.sql or None, status=(
                 NodeStatus.OK if vres.ok else NodeStatus.ERROR),
                 detail={"sql": sql, "valid": vres.ok, "errors": vres.errors})
             return vres
 
-    def _execute(self, trace: TraceCollector, sql: str):
-        with trace.span("sql_execute", NodeType.STEP, input=sql) as node:
+    def _execute(self, trace: TraceCollector, sql: str, parent=None):
+        with trace.span("sql_execute", NodeType.STEP, parent=parent, input=sql) as node:
             eres = executor.execute_sql(sql, self.max_rows, self.settings.sql_timeout_ms)
             trace.finish(node, status=NodeStatus.OK if eres.ok else NodeStatus.ERROR,
                          detail={"row_count": eres.row_count,
@@ -224,8 +303,45 @@ class NL2SQLPipeline:
                                  **({"error": eres.error[:300]} if not eres.ok else {})})
             return eres
 
-    def _summarize(self, trace: TraceCollector, result: NL2SQLResult) -> None:
-        with trace.span("summarize", NodeType.STEP, input=None) as node:
+    # ------------------------------------------------- empty attribution (W3)
+
+    def _attribute_empty(self, trace: TraceCollector, sql: str,
+                         last_feedback: str | None, parent=None) -> dict:
+        """空结果归因（§4.2 ⑥-5）：确定性证据优先，零 LLM 成本。
+
+        - 过滤值核对：WHERE column = 'value' 中的 value 若不在该列 distinct
+          值中 → verdict=suspicious_filter（附最接近值），触发定向修复；
+        - 全部过滤值存在 → 下推 SELECT count(*) 佐证基表非空 →
+          verdict=truly_no_data（如实回答）。
+        """
+        from .empty_attr import attribute_empty_sql
+        with trace.span("empty_attr", NodeType.STEP, parent=parent, input=sql) as node:
+            attr = attribute_empty_sql(sql)
+            trace.finish(node, output=attr.get("verdict"), detail=attr)
+            return attr
+
+    def _summarize_empty(self, trace: TraceCollector, result: NL2SQLResult,
+                         parent=None) -> None:
+        """空结果也给出如实解释（含归因证据），不编造。"""
+        with trace.span("summarize", NodeType.STEP, parent=parent, input=None) as node:
+            attr = result.empty_attribution or {}
+            verdict = attr.get("verdict", "")
+            if verdict == "suspicious_filter":
+                result.summary = (
+                    f"查询未返回数据，且过滤条件疑似有误：{attr.get('evidence_note', '')}"
+                    "（已尝试自动修正仍为空，建议换个说法或补充条件）")
+            elif verdict == "truly_no_data":
+                result.summary = (
+                    f"查询语法与过滤值均正确，但数据库中确实没有匹配的数据"
+                    f"{('（' + attr['evidence_note'] + '）') if attr.get('evidence_note') else ''}。")
+            else:
+                result.summary = "查询未返回数据，未找到匹配记录。"
+            trace.finish(node, output=result.summary, detail={
+                "verdict": verdict, "chart_hint": None})
+
+    def _summarize(self, trace: TraceCollector, result: NL2SQLResult,
+                   parent=None) -> None:
+        with trace.span("summarize", NodeType.STEP, parent=parent, input=None) as node:
             messages = prompts.build_summarize_messages(
                 result.question, result.sql, result.columns, result.rows)
             resp = self.llm.chat(messages, temperature=0.3, max_tokens=300,
@@ -256,7 +372,30 @@ def _guess_chart_hint(columns: list[str], rows: list[list]) -> str | None:
     return "bar"
 
 
+def _is_semantically_empty(columns: list[str], rows: list[list]) -> bool:
+    """Single-row single-cell 0/NULL = aggregate over nothing (COUNT/MAX/...).
+    Multi-column / multi-row results are never 'semantically empty'."""
+    if not rows:
+        return True
+    if len(rows) == 1 and len(columns) == 1:
+        v = rows[0][0]
+        if v is None:
+            return True
+        try:
+            return float(v) == 0.0
+        except (TypeError, ValueError):
+            return False
+    return False
+
+
 def _is_num(v: Any) -> bool:
+    """Numeric check covering Decimal (psycopg) & numpy types, not just int/float."""
+    if v is None:
+        return False
     if isinstance(v, (int, float)):
         return True
-    return isinstance(v, str) and bool(re.match(r"^-?[\d,.]+$", v))
+    try:
+        float(v)
+        return True
+    except (TypeError, ValueError):
+        return False

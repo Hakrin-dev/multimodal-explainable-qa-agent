@@ -85,6 +85,14 @@ class Settings(BaseSettings):
     embedding_model_path: str = "models/bge-small-zh-v1.5"  # relative to repo
     siliconflow_embedding_model: str = "BAAI/bge-m3"
 
+    # ---- agent kernel ----
+    session_persist: bool = True   # sessions & turns to PG (best-effort)
+
+    # ---- schema linking (W3 #4/#5) ----
+    schema_linking: bool = True    # compressed schema + join paths (ablation: 0)
+    schema_linking_rerank: bool = True  # LLM 精排过滤干扰表 (W3 #4, ablation: 0)
+    term_vector_match: bool = True  # rewriter 模糊匹配：编辑距离+pgvector (W3 #1/#2)
+
     # ---- nl2sql pipeline ----
     sql_max_rows: int = 50
     sql_timeout_ms: int = 5000

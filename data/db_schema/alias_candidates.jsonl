@@ -1,0 +1,129 @@
+{"id": 1, "canonical": "Alternative", "binding": "genre.name", "candidates": ["另类", "另类音乐", "另类摇滚", "非主流", "非主流音乐"]}
+{"id": 2, "canonical": "Alternative & Punk", "binding": "genre.name", "candidates": ["另类朋克", "另类摇滚", "朋克摇滚", "另类与朋克", "另类朋克乐"]}
+{"id": 3, "canonical": "Blues", "binding": "genre.name", "candidates": ["蓝调", "布鲁斯", "蓝调音乐", "布鲁斯音乐", "怨曲"]}
+{"id": 4, "canonical": "Bossa Nova", "binding": "genre.name", "candidates": ["巴萨诺瓦", "波萨诺瓦", "巴萨诺娃", "波萨诺娃", "巴莎诺瓦"]}
+{"id": 5, "canonical": "Classical", "binding": "genre.name", "candidates": ["古典", "古典乐", "古典音乐"]}
+{"id": 6, "canonical": "Comedy", "binding": "genre.name", "candidates": ["喜剧", "喜剧风", "喜剧音乐", "搞笑风", "幽默风"]}
+{"id": 7, "canonical": "Drama", "binding": "genre.name", "candidates": ["剧情音乐", "戏剧风", "戏剧曲风", "剧情风", "剧乐"]}
+{"id": 8, "canonical": "Easy Listening", "binding": "genre.name", "candidates": ["轻音乐", "轻松听", "休闲音乐", "背景音乐", "易听音乐"]}
+{"id": 9, "canonical": "Electronica/Dance", "binding": "genre.name", "candidates": ["电子舞曲", "电子音乐", "电音", "电子舞曲乐", "电子乐"]}
+{"id": 10, "canonical": "Heavy Metal", "binding": "genre.name", "candidates": ["重金属", "重金属乐", "重金", "金属乐", "重摇滚"]}
+{"id": 11, "canonical": "Hip Hop/Rap", "binding": "genre.name", "candidates": ["嘻哈", "说唱", "嘻哈乐", "说唱乐", "黑泡"]}
+{"id": 12, "canonical": "Jazz", "binding": "genre.name", "candidates": ["爵士音乐", "爵士曲", "爵式", "Jass"]}
+{"id": 13, "canonical": "Latin", "binding": "genre.name", "candidates": ["拉丁", "拉丁乐", "拉丁音乐", "拉美音乐", "拉丁曲风"]}
+{"id": 14, "canonical": "Metal", "binding": "genre.name", "candidates": ["金属", "金属乐", "重金属", "金属音乐", "重金"]}
+{"id": 15, "canonical": "Opera", "binding": "genre.name", "candidates": ["歌剧", "西洋歌剧", "古典歌剧", "歌剧乐", "欧剧"]}
+{"id": 16, "canonical": "Pop", "binding": "genre.name", "candidates": ["流行", "流行乐", "流行音乐", "波普", "泡泡"]}
+{"id": 17, "canonical": "R&B/Soul", "binding": "genre.name", "candidates": ["节奏布鲁斯", "灵魂乐", "节奏蓝调", "R&B", "骚灵"]}
+{"id": 18, "canonical": "Reggae", "binding": "genre.name", "candidates": ["雷鬼", "雷吉", "雷盖", "雷鬼乐", "雷吉音乐"]}
+{"id": 19, "canonical": "Rock", "binding": "genre.name", "candidates": ["摇滚音乐", "摇gun", "摇滚曲风", "摇滚风格", "摇滚歌曲"]}
+{"id": 20, "canonical": "Rock And Roll", "binding": "genre.name", "candidates": ["摇滚", "摇滚乐", "摇磙", "滚石乐", "摇滚音乐"]}
+{"id": 21, "canonical": "Science Fiction", "binding": "genre.name", "candidates": ["科幻", "科幻风", "科幻音乐", "Sci-Fi", "SciFi"]}
+{"id": 22, "canonical": "Sci Fi & Fantasy", "binding": "genre.name", "candidates": ["科幻奇幻", "科幻与奇幻", "科幻幻想", "科幻魔幻", "Sci-Fi奇幻"]}
+{"id": 23, "canonical": "Soundtrack", "binding": "genre.name", "candidates": ["原声带", "影视原声", "电影原声", "配乐", "OST"]}
+{"id": 24, "canonical": "TV Shows", "binding": "genre.name", "candidates": ["电视节目", "电视秀", "综艺节目", "电视综艺", "TV秀"]}
+{"id": 25, "canonical": "World", "binding": "genre.name", "candidates": ["世界音乐", "全球音乐", "民族音乐", "世界风", "异域音乐"]}
+{"id": 26, "canonical": "AAC audio file", "binding": "mediatype.name", "candidates": ["AAC音频", "AAC文件", "AAC格式", "AAC音乐", "AAC音轨"]}
+{"id": 27, "canonical": "MPEG audio file", "binding": "mediatype.name", "candidates": ["MPEG音频", "MP3文件", "音频文件", "MPEG音频文件", "MP3格式"]}
+{"id": 28, "canonical": "Protected AAC audio file", "binding": "mediatype.name", "candidates": ["受保护AAC", "加密AAC", "AAC音频", "苹果AAC", "AAC格式"]}
+{"id": 29, "canonical": "Protected MPEG-4 video file", "binding": "mediatype.name", "candidates": ["受保护MP4", "加密MP4", "保护MP4", "MP4保护格式", "受保护视频"]}
+{"id": 30, "canonical": "Purchased AAC audio file", "binding": "mediatype.name", "candidates": ["购买AAC音频", "AAC音频文件", "购买AAC", "AAC音频", "购买音频"]}
+{"id": 31, "canonical": "90’s Music", "binding": "playlist.name", "candidates": ["90年代音乐", "九十年代音乐", "90s音乐", "90年代歌单", "复古90s"]}
+{"id": 32, "canonical": "Audiobooks", "binding": "playlist.name", "candidates": ["有声书", "听书", "音频书", "有声读物", "语音书"]}
+{"id": 33, "canonical": "Brazilian Music", "binding": "playlist.name", "candidates": ["巴西音乐", "巴西乐", "巴乐", "Brazil音乐", "Brazilian"]}
+{"id": 34, "canonical": "Classical", "binding": "playlist.name", "candidates": ["古典", "古典乐", "古典音乐", "经典乐"]}
+{"id": 35, "canonical": "Classical 101 - Deep Cuts", "binding": "playlist.name", "candidates": ["古典深挖", "古典冷门", "古典101深选", "古典深藏", "古典遗珠"]}
+{"id": 36, "canonical": "Classical 101 - Next Steps", "binding": "playlist.name", "candidates": ["古典101进阶", "古典101下一步", "古典音乐101进阶", "古典101续集", "古典101进阶篇"]}
+{"id": 37, "canonical": "Classical 101 - The Basics", "binding": "playlist.name", "candidates": ["古典101基础", "古典入门101", "古典基础101", "古典101入门", "古典乐基础"]}
+{"id": 38, "canonical": "Grunge", "binding": "playlist.name", "candidates": ["垃圾摇滚", "油渍摇滚", "格朗基", "格兰奇", "脏摇滚"]}
+{"id": 39, "canonical": "Heavy Metal Classic", "binding": "playlist.name", "candidates": ["重金属经典", "重金属老歌", "经典重金属", "金属经典", "重金属精选"]}
+{"id": 40, "canonical": "Movies", "binding": "playlist.name", "candidates": ["影片", "片子", "影单", "电影名"]}
+{"id": 41, "canonical": "Music", "binding": "playlist.name", "candidates": ["歌单名", "歌单名称", "音乐名", "曲目名"]}
+{"id": 42, "canonical": "Music Videos", "binding": "playlist.name", "candidates": ["音乐视频", "MV", "音乐短片", "音乐录影带", "音悦视频"]}
+{"id": 43, "canonical": "On-The-Go 1", "binding": "playlist.name", "candidates": ["OTG1", "OTG 1", "On The Go 1", "OnTheGo1", "On-The-Go一"]}
+{"id": 44, "canonical": "TV Shows", "binding": "playlist.name", "candidates": ["电视节目", "电视秀", "剧集", "电视节目单", "TV秀"]}
+{"id": 45, "canonical": "Argentina", "binding": "customer.country", "candidates": ["阿根廷", "阿国", "阿根廷", "阿根庭", "阿更廷"]}
+{"id": 46, "canonical": "Australia", "binding": "customer.country", "candidates": ["澳洲", "澳大利亚", "澳国", "澳大利亚国", "澳洲国"]}
+{"id": 47, "canonical": "Austria", "binding": "customer.country", "candidates": ["奥地利", "奥国", "奥地", "澳地利", "欧地利"]}
+{"id": 48, "canonical": "Belgium", "binding": "customer.country", "candidates": ["比利时", "比国", "比利时国", "Belgique", "België"]}
+{"id": 49, "canonical": "Brazil", "binding": "customer.country", "candidates": ["巴国", "巴西国", "巴子", "巴希", "巴西亚"]}
+{"id": 50, "canonical": "Canada", "binding": "customer.country", "candidates": ["加国", "枫叶之国", "北美加国", "加纳大", "Kanata"]}
+{"id": 51, "canonical": "Chile", "binding": "customer.country", "candidates": ["智利", "智利国", "智利共和国", "南美智利", "智利国家"]}
+{"id": 52, "canonical": "Czech Republic", "binding": "customer.country", "candidates": ["捷克", "捷克共和国", "捷克国", "捷克斯洛伐克", "捷克地区"]}
+{"id": 53, "canonical": "Denmark", "binding": "customer.country", "candidates": ["丹麦", "丹麦国", "丹mark", "丹麥", "丹麦王国"]}
+{"id": 54, "canonical": "Finland", "binding": "customer.country", "candidates": ["芬兰", "芬国", "芬兰国", "芬籣"]}
+{"id": 55, "canonical": "France", "binding": "customer.country", "candidates": ["法兰西", "法国国", "法籍", "法兰西国"]}
+{"id": 56, "canonical": "Germany", "binding": "customer.country", "candidates": ["德国", "德意志", "西德", "东德"]}
+{"id": 57, "canonical": "Hungary", "binding": "customer.country", "candidates": ["匈牙利", "匈国", "牙利", "匈亚利", "洪扎利"]}
+{"id": 58, "canonical": "India", "binding": "customer.country", "candidates": ["印度", "天竺", "身毒", "印地", "IND"]}
+{"id": 59, "canonical": "Ireland", "binding": "customer.country", "candidates": ["爱尔兰", "爱兰", "爱岛"]}
+{"id": 60, "canonical": "Italy", "binding": "customer.country", "candidates": ["意大利", "意国", "意呆利", "义大利", "意国"]}
+{"id": 61, "canonical": "Netherlands", "binding": "customer.country", "candidates": ["荷兰", "尼德兰", "荷国", "荷兰国", "Holland"]}
+{"id": 62, "canonical": "Norway", "binding": "customer.country", "candidates": ["挪威", "挪国", "挪威国", "诺威"]}
+{"id": 63, "canonical": "Poland", "binding": "customer.country", "candidates": ["波兰", "波兰国", "波国", "Polska", "波兰共和国"]}
+{"id": 64, "canonical": "Portugal", "binding": "customer.country", "candidates": ["葡萄牙", "葡国", "Portugal国", "葡萄牙国"]}
+{"id": 65, "canonical": "Spain", "binding": "customer.country", "candidates": ["西班牙", "西国", "西板牙", "Spain国", "ESP"]}
+{"id": 66, "canonical": "Sweden", "binding": "customer.country", "candidates": ["瑞典", "瑞典国", "瑞国", "Sweden国", "Sweeden"]}
+{"id": 67, "canonical": "United Kingdom", "binding": "customer.country", "candidates": ["英国", "UK", "大英", "英伦", "联合王国"]}
+{"id": 68, "canonical": "USA", "binding": "customer.country", "candidates": ["美利坚", "老美", "米国", "漂亮国", "America"]}
+{"id": 69, "canonical": "Amsterdam", "binding": "customer.city", "candidates": ["阿姆斯特丹", "阿姆", "荷京", "阿姆城", "阿姆斯特"]}
+{"id": 70, "canonical": "Bangalore", "binding": "customer.city", "candidates": ["班加罗尔", "邦加罗尔", "班加洛尔", "班加罗", "邦加洛尔"]}
+{"id": 71, "canonical": "Berlin", "binding": "customer.city", "candidates": ["柏林", "柏林市", "伯林", "柏林城", "柏林地区"]}
+{"id": 72, "canonical": "Bordeaux", "binding": "customer.city", "candidates": ["波尔多", "波尔多市", "波城", "波尔多城", "波尔多地区"]}
+{"id": 73, "canonical": "Boston", "binding": "customer.city", "candidates": ["波士顿", "波城", "博士顿", "波斯顿", "波土顿"]}
+{"id": 74, "canonical": "Brasília", "binding": "customer.city", "candidates": ["巴西利亚", "巴利亚", "巴西里亚", "巴希利亚", "巴西利亚市"]}
+{"id": 75, "canonical": "Brussels", "binding": "customer.city", "candidates": ["布鲁塞尔", "布鲁塞", "布城", "布鲁", "布塞"]}
+{"id": 76, "canonical": "Budapest", "binding": "customer.city", "candidates": ["布达佩斯", "布达", "佩斯", "布达佩斯城", "布达佩斯市"]}
+{"id": 77, "canonical": "Buenos Aires", "binding": "customer.city", "candidates": ["布宜诺斯艾利斯", "布宜诺斯", "布市", "布宜诺", "布宜"]}
+{"id": 78, "canonical": "Chicago", "binding": "customer.city", "candidates": ["芝加哥", "芝城", "风城", "芝加歌", "芝加哥市"]}
+{"id": 79, "canonical": "Copenhagen", "binding": "customer.city", "candidates": ["哥本哈根", "哥哈", "哥市", "CPH", "哥本哈根市"]}
+{"id": 80, "canonical": "Cupertino", "binding": "customer.city", "candidates": ["库比蒂诺", "库比提诺", "库珀蒂诺", "库比蒂洛", "库比"]}
+{"id": 81, "canonical": "Delhi", "binding": "customer.city", "candidates": ["德里", "新德里", "德里市", "新德里市", "德理"]}
+{"id": 82, "canonical": "Dijon", "binding": "customer.city", "candidates": ["第戎", "迪戎", "狄戎", "第荣", "迪乔恩"]}
+{"id": 83, "canonical": "Dublin", "binding": "customer.city", "candidates": ["都柏林", "都伯林", "都柏林市", "都伯林市", "Dub"]}
+{"id": 84, "canonical": "Edinburgh", "binding": "customer.city", "candidates": ["爱丁堡", "爱丁堡市", "爱城", "爱丁堡城", "Edinburg"]}
+{"id": 85, "canonical": "Edmonton", "binding": "customer.city", "candidates": ["埃德蒙顿", "爱民顿", "埃城", "Edmon", "Edm"]}
+{"id": 86, "canonical": "Fort Worth", "binding": "customer.city", "candidates": ["沃斯堡", "福特沃斯", "福和市", "Fort Worth市", "Ft Worth"]}
+{"id": 87, "canonical": "Frankfurt", "binding": "customer.city", "candidates": ["法兰克福", "法拉克福", "法兰克", "法福", "法兰"]}
+{"id": 88, "canonical": "Halifax", "binding": "customer.city", "candidates": ["哈利法克斯", "哈法", "哈市", "哈里法克斯", "哈立法克斯"]}
+{"id": 89, "canonical": "Helsinki", "binding": "customer.city", "candidates": ["赫尔辛基", "赫城", "赫辛基", "赫尔辛", "赫尔新基"]}
+{"id": 90, "canonical": "Lisbon", "binding": "customer.city", "candidates": ["里斯本", "里斯", "本城", "Lisbon城", "Lisbon市"]}
+{"id": 91, "canonical": "London", "binding": "customer.city", "candidates": ["伦敦", "伦敦城", "伦敦市", "英国伦敦", "大伦敦"]}
+{"id": 92, "canonical": "Lyon", "binding": "customer.city", "candidates": ["里昂", "里昂市", "法国里昂", "里昂城"]}
+{"id": 93, "canonical": "Madison", "binding": "customer.city", "candidates": ["麦迪逊", "麦迪逊市", "麦迪森", "麦迪逊城", "麦迪迅"]}
+{"id": 94, "canonical": "Madrid", "binding": "customer.city", "candidates": ["马德里", "马德里市", "马德里城", "马德里地区", "马德里区"]}
+{"id": 95, "canonical": "Montréal", "binding": "customer.city", "candidates": ["蒙特利尔", "满地可", "蒙特娄", "蒙城", "蒙特利尔市"]}
+{"id": 96, "canonical": "Mountain View", "binding": "customer.city", "candidates": ["山景城", "山景市", "芒廷维尤", "山景镇", "山景"]}
+{"id": 97, "canonical": "New York", "binding": "customer.city", "candidates": ["纽约", "纽约市", "NYC", "纽市", "纽城"]}
+{"id": 98, "canonical": "Orlando", "binding": "customer.city", "candidates": ["奥兰多", "奥兰多市", "奥兰多城", "奥兰多地区", "奥兰多市"]}
+{"id": 99, "canonical": "Oslo", "binding": "customer.city", "candidates": ["奥斯陆", "奥斯洛", "欧斯陆", "奥斯路", "奥斯罗"]}
+{"id": 100, "canonical": "Ottawa", "binding": "customer.city", "candidates": ["渥太华", "渥京", "渥村", "加首都", "渥城"]}
+{"id": 101, "canonical": "Paris", "binding": "customer.city", "candidates": ["巴黎", "巴黎市", "花都", "光之城", "巴梨"]}
+{"id": 102, "canonical": "Porto", "binding": "customer.city", "candidates": ["波尔图", "波图", "波尔图市", "Porto市", "波尔图城"]}
+{"id": 103, "canonical": "Prague", "binding": "customer.city", "candidates": ["布拉格", "布拉格城", "普拉格", "布拉哈", "布拉格市"]}
+{"id": 104, "canonical": "Redmond", "binding": "customer.city", "candidates": ["雷德蒙德", "雷蒙德", "雷德蒙", "红蒙德", "雷德蒙市"]}
+{"id": 105, "canonical": "Reno", "binding": "customer.city", "candidates": ["雷诺", "里诺", "雷诺市", "里诺市", "雷诺城"]}
+{"id": 106, "canonical": "Rio de Janeiro", "binding": "customer.city", "candidates": ["里约", "里约热内卢", "Rio", "里约市", "Rio热内卢"]}
+{"id": 107, "canonical": "Rome", "binding": "customer.city", "candidates": ["罗马", "罗马城", "罗马市", "罗马城", "罗马市"]}
+{"id": 108, "canonical": "Salt Lake City", "binding": "customer.city", "candidates": ["盐湖城", "盐湖市", "盐湖", "SLC", "盐湖城城"]}
+{"id": 109, "canonical": "Santiago", "binding": "customer.city", "candidates": ["圣地亚哥", "圣市", "SD", "圣城", "圣地亚哥城"]}
+{"id": 110, "canonical": "São José dos Campos", "binding": "customer.city", "candidates": ["圣若泽杜斯坎普斯", "圣若泽", "圣何塞", "圣保罗州圣若泽", "SJC"]}
+{"id": 111, "canonical": "São Paulo", "binding": "customer.city", "candidates": ["圣保罗", "圣保罗市", "圣堡罗", "圣保罗城", "圣保罗地区"]}
+{"id": 112, "canonical": "Sidney", "binding": "customer.city", "candidates": ["悉尼", "雪梨", "悉尼市", "雪梨市", "悉尼城"]}
+{"id": 113, "canonical": "Stockholm", "binding": "customer.city", "candidates": ["斯德哥尔摩", "斯京", "斯德哥尔摩市", "斯德哥尔摩城", "斯德哥尔摩地区"]}
+{"id": 114, "canonical": "Stuttgart", "binding": "customer.city", "candidates": ["斯图加特", "斯图加", "斯图", "斯图加特市", "斯图加特城"]}
+{"id": 115, "canonical": "Toronto", "binding": "customer.city", "candidates": ["多伦多", "大多", "多市", "多伦多市", "多伦多城"]}
+{"id": 116, "canonical": "Tucson", "binding": "customer.city", "candidates": ["图森", "土桑", "图桑", "图森市", "土孙"]}
+{"id": 117, "canonical": "Vancouver", "binding": "customer.city", "candidates": ["温哥华", "温市", "温村", "Van", "温哥华市"]}
+{"id": 118, "canonical": "Vienne", "binding": "customer.city", "candidates": ["维也纳", "维恩", "维也那", "维耶纳", "维恩纳"]}
+{"id": 119, "canonical": "Warsaw", "binding": "customer.city", "candidates": ["华沙", "华沙城", "波兰首都", "华沙市", "华沙地区"]}
+{"id": 120, "canonical": "Winnipeg", "binding": "customer.city", "candidates": ["温尼伯", "温尼辟", "温尼伯格", "温城", "温尼佩格"]}
+{"id": 121, "canonical": "Yellowknife", "binding": "customer.city", "candidates": ["耶洛奈夫", "黄刀镇", "黄刀城", "黄刀市", "耶洛耐夫"]}
+{"id": 122, "canonical": "Andrew", "binding": "employee.firstname", "candidates": ["安猪", "安德鲁", "安迪", "安卓", "安得鲁"]}
+{"id": 123, "canonical": "Jane", "binding": "employee.firstname", "candidates": ["珍妮", "简妮", "洁恩"]}
+{"id": 124, "canonical": "Laura", "binding": "employee.firstname", "candidates": ["劳拉", "萝拉", "罗拉", "劳娜", "洛拉"]}
+{"id": 125, "canonical": "Margaret", "binding": "employee.firstname", "candidates": ["玛格丽特", "玛格", "小玛", "玛姬", "玛格丽"]}
+{"id": 126, "canonical": "Michael", "binding": "employee.firstname", "candidates": ["迈克", "麦克", "米高", "迈克儿", "迈克尔"]}
+{"id": 127, "canonical": "Nancy", "binding": "employee.firstname", "candidates": ["南希", "南茜", "楠希", "南西", "南锡"]}
+{"id": 128, "canonical": "Robert", "binding": "employee.firstname", "candidates": ["罗伯特", "罗伯", "小罗", "罗伯托", "罗波特"]}
+{"id": 129, "canonical": "Steve", "binding": "employee.firstname", "candidates": ["史蒂夫", "史提夫", "斯蒂夫", "小史", "老史"]}

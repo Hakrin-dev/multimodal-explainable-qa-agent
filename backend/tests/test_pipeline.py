@@ -77,12 +77,13 @@ def test_pipeline_needs_clarification_without_db(monkeypatch, tmp_path):
 # ------------------------------------------------------------ integration --
 
 @requires_db
-def test_pipeline_end_to_end_mock(tmp_path):
+def test_pipeline_end_to_end_mock(tmp_path, monkeypatch):
     """Full loop with a scripted mock SQL answer against the live Chinook DB."""
     p = NL2SQLPipeline(llm=_mock_llm(tmp_path, [
         "【分析】统计曲目总数\n【SQL】\n```sql\nSELECT COUNT(*) AS cnt FROM track\n```",
         "数据库中共有若干首曲目。",
     ]))
+    monkeypatch.setattr(p.settings, "schema_linking_rerank", False)  # keep scripted slots
     r = p.run("一共有多少首曲目？")
     assert r.status == "ok"
     assert r.columns == ["cnt"]
@@ -94,13 +95,14 @@ def test_pipeline_end_to_end_mock(tmp_path):
 
 
 @requires_db
-def test_repair_loop_recovers(tmp_path):
+def test_repair_loop_recovers(tmp_path, monkeypatch):
     """First SQL invalid (unknown table) -> repair round fixes it."""
     p = NL2SQLPipeline(llm=_mock_llm(tmp_path, [
         "【分析】误写表名\n【SQL】\n```sql\nSELECT COUNT(*) FROM tracks\n```",
         "【分析】修正表名\n【SQL】\n```sql\nSELECT COUNT(*) AS cnt FROM track\n```",
         "共若干首曲目。",
     ]))
+    monkeypatch.setattr(p.settings, "schema_linking_rerank", False)  # keep scripted slots
     r = p.run("多少曲目？")
     assert r.status == "ok" and r.repair_rounds == 1
     labels = [c["label"] for c in r.trace["root"]["children"]]
@@ -114,7 +116,9 @@ def test_rewriter_alias(tmp_path):
     assert any(t["canonical"] == "Rock" for t in terms)
     r = rewrite("摇滚曲风有多少首歌", terms)
     assert "Rock" in r.question
-    assert any(w["before"] == "摇滚" for w in r.rewrites)
+    # alias-set agnostic: W3 LLM aliases may include longer spans (摇滚曲风)
+    # that win the longest-match — assert the 摇滚 span maps to Rock either way
+    assert any("摇滚" in w["before"] and w["after"] == "Rock" for w in r.rewrites)
 
 
 # ------------------------------------------------------- top-n heuristic --
@@ -132,3 +136,12 @@ def test_topn_no_false_positive_on_time_span():
     from app.nl2sql.pipeline import topn_requirement
     assert topn_requirement("前一年的销售额是多少") is None
     assert topn_requirement("销量前十的曲目") == 10
+
+
+def test_chart_hint_decimal_columns():
+    """Regression (W2-D4): psycopg returns Decimal — chart heuristic must
+    still recognize numeric columns (demo scenario 1 'no chart hint')."""
+    from decimal import Decimal
+    from app.nl2sql.pipeline import _guess_chart_hint
+    assert _guess_chart_hint(["name", "total_quantity"],
+                             [["The Trooper", Decimal("5")], ["Eruption", Decimal("4")]]) == "bar"

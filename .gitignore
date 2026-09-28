@@ -34,3 +34,4 @@ backend/var/
 .DS_Store
 Thumbs.db
 models/
+.workbuddy/
