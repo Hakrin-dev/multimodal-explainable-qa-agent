@@ -270,3 +270,36 @@ git --no-pager diff --stat
 
 本次完成坏文档生成与检测基准，不包含自动修复。下一步是独立部署 MinerU，
 实现扫描件解析适配器，并将旋转、模糊繁体样本恢复为现有 `DocIR` 后重新检索。
+
+## B 增量（2026-09-28）：MinerU 4.x 扫描件解析闭环
+
+### 本次完成
+
+- 独立部署 MinerU 4.0.7，使用 Python 3.12、Basic tier 和 ONNX backend；
+- 新增 `ingestion/parsers/mineru.py`，将 Middle JSON v2 转换为冻结的 DocIR；
+- 完成页码、bbox、页面旋转、块类型及文档元数据映射；
+- 过滤 MinerU page header/footer，避免测试标记和页码进入检索文本；
+- Pipeline 对复杂度 3～5 的文档实际执行 MinerU，不再固定报未实现错误；
+- MinerU 失败、超时和结果契约错误均在 embedding/数据库访问前终止；
+- 新增 6 项 adapter 单元测试并更新旧路由失败测试。
+
+### 验收结果
+
+| 验收项 | 结果 |
+|---|---|
+| MinerU adapter 测试 | 6 passed |
+| 联合专项回归 | 41 passed |
+| 全量测试 | 141 passed，5 warnings，0 failure |
+| 旋转扫描件解析 | 5 blocks、1 chunk |
+| 首次摄入 | 1 new chunk |
+| 重复摄入 | 0 new chunks |
+| 数据库状态 | 5 docs、39 chunks、39 embeddings |
+| 扫描件检索 | 3/3，全部 Top-1 |
+| 原有 RAG 回归 | 8/8，retrieval hit@6=100% |
+
+### 剩余边界
+
+- 模糊繁体扫描件当前仅恢复标题和最终结论，正文召回仍不足；
+- 缺失视觉层级文档能够提取正文，但尚未恢复 H1/H2；
+- PaddleOCR 兜底、Standard tier/GPU 服务化仍待后续；
+- 当前完成 MinerU 解析闭环，不代表摄入流水线 v1 全部完成。

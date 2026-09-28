@@ -6,13 +6,14 @@ from uuid import uuid4
 
 import pymupdf
 import pytest
+
 from app.ingestion import chunker, pdf_ingest
 from app.ingestion.complexity import (
     ComplexityAssessment,
-    ParserUnavailableError,
     assess_pdf,
     route_parser,
 )
+from app.ingestion.parsers.mineru import MinerUError
 from app.rag.pipeline import ingest_document
 
 
@@ -130,17 +131,26 @@ def test_blank_corrupt_and_encrypted_pdf(tmp_path):
         assess_pdf(corrupt)
 
 
-def test_unsupported_route_stops_before_model_or_database(tmp_path, monkeypatch):
+def test_mineru_failure_stops_before_model_or_database(
+    tmp_path,
+    monkeypatch,
+):
     from app.rag import pipeline
 
     model = Mock(side_effect=AssertionError("model must not load"))
     store = Mock(side_effect=AssertionError("DB must not open"))
+    mineru = Mock(side_effect=MinerUError("simulated MinerU failure"))
+
     monkeypatch.setattr(pipeline, "get_embedding_service", model)
     monkeypatch.setattr(pipeline, "KBStore", store)
+    monkeypatch.setattr(pipeline.mineru_parser, "parse_pdf", mineru)
+
     path = make_pdf(tmp_path / "scan.pdf", scan=True)
-    with pytest.raises(ParserUnavailableError) as error:
+
+    with pytest.raises(MinerUError, match="simulated"):
         ingest_document(str(path), force=True)
-    assert error.value.assessment.level == 5
+
+    mineru.assert_called_once_with(str(path))
     model.assert_not_called()
     store.assert_not_called()
 
@@ -185,7 +195,10 @@ def test_repository_normal_pdfs(filename):
     assert result.level == 1 and result.parser == "pymupdf"
 
 
-def test_assessment_database_refresh_preserves_chunks(tmp_path):
+def test_assessment_database_refresh_preserves_chunks(
+    tmp_path,
+    monkeypatch,
+):
     from app.db.session import get_conn, test_connection
     from app.rag.embedding import EmbeddingService
     from app.rag.store import KBStore
@@ -226,8 +239,18 @@ def test_assessment_database_refresh_preserves_chunks(tmp_path):
         # A rejected replacement must preserve an already indexed document.
         path.unlink()
         make_pdf(path, scan=True)
-        with pytest.raises(ParserUnavailableError):
-            ingest_document(str(path), store=store, embedding=no_embedding, force=True)
+        from app.rag import pipeline
+
+        mineru = Mock(side_effect=MinerUError("simulated MinerU failure"))
+        monkeypatch.setattr(pipeline.mineru_parser, "parse_pdf", mineru)
+
+        with pytest.raises(MinerUError, match="simulated"):
+            ingest_document(
+                str(path),
+                store=store,
+                embedding=no_embedding,
+                force=True,
+            )
         assert store.doc_content_hash(doc.doc_id) == doc.content_hash()
     finally:
         with get_conn(readonly=False) as conn, conn.cursor() as cur:

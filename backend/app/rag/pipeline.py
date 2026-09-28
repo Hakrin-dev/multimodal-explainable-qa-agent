@@ -20,7 +20,8 @@ from ..core.llm import LLMService, get_llm_service
 from ..core.prompts import rag as prompts
 from ..core.tracing import NodeType, TraceCollector
 from ..ingestion import chunker, pdf_ingest
-from ..ingestion.complexity import ParserUnavailableError, assess_pdf
+from ..ingestion.complexity import assess_pdf
+from ..ingestion.parsers import mineru as mineru_parser
 from ..ingestion.ir import DocIR
 from ..ingestion.quality import assess_quality
 from .embedding import EmbeddingService, get_embedding_service
@@ -49,10 +50,13 @@ def ingest_document(
     quality = assess_quality(path)
     assessment = assess_pdf(path)
 
-    if assessment.parser != "pymupdf":
-        raise ParserUnavailableError(assessment)
+    if assessment.parser == "pymupdf":
+        doc = pdf_ingest.parse_pdf(path)
+    elif assessment.parser == "mineru":
+        doc = mineru_parser.parse_pdf(path)
+    else:
+        raise ValueError(f"unsupported parser route: {assessment.parser}")
 
-    doc = pdf_ingest.parse_pdf(path)
     doc.meta.update(quality.metadata())
     doc.meta.update(assessment.metadata())
 

@@ -135,11 +135,11 @@ raw file ──► 质量评估(#9) ──► 复杂度评分(#8) ──► 解�
 | 层级感知切片 + 面包屑 + 硬换行拼接 | ✅ v0 | `chunker.py` |
 | 文本层检测（#9 第一个检测器） | ✅ | `pdf_ingest.has_text_layer` |
 | 质量评估（方向/倾斜/清晰度/文本层/繁简） | ✅ rules-v1；扫描件视觉方向与 OCR 级倾斜待后续增强 | `quality.py`；`rag.pipeline.ingest_document` |
-| 复杂度评分 1-5 + 解析路由（#8 轻量） | ✅ 规则评分/路由选择；MinerU 执行待接入 | `complexity.py`；`rag.pipeline.ingest_document` |
-| MinerU / PaddleOCR 接入（扫描件路径） | ⬜ W2 | `parsers/mineru.py` 等 |
+| 复杂度评分 1-5 + 解析路由（#8 轻量） | ✅ 规则评分、路由选择与 MinerU 执行已接入 | `complexity.py`；`rag.pipeline.ingest_document` |
+| MinerU 4.x Basic 扫描件解析 | ✅ Middle JSON v2 → DocIR；PaddleOCR 兜底仍待接入 | `parsers/mineru.py`；`rag.pipeline.ingest_document` |
 | 目录信号融合 + LLM 层级判定（#7 完整版） | ⬜ 决赛 | `pdf_ingest` 扩展 |
 | 公式登记（#6） | ⬜ W2 | LLM 从 blocks 抽 LaTeX→FormulaIR |
-| 坏文档生成器（3 份，W2 演示用） | ✅ 目录结构缺失/旋转扫描/模糊繁体；解析修复闭环待接入 | `scripts/gen_bad_docs.py`；`tests/test_bad_docs.py` |
+| 坏文档生成器（3 份，W2 演示用） | ✅ 三类资产完成；旋转扫描件已完成解析检索闭环，其余两类待增强 | `scripts/gen_bad_docs.py`；`tests/test_bad_docs.py` |
 
 ## 变更记录
 
@@ -162,7 +162,10 @@ raw file ──► 质量评估(#9) ──► 复杂度评分(#8) ──► 解�
   图片面积采用页面可见区域内图片矩形并集，重叠不重复计数；按全部页总面积加权。
 - 1–2 级选择 `pymupdf`；3 级选择 `mineru`；4–5 级选择 `mineru` 并告警
   `postprocessing_required`。`DocIR.parser` 仍表示实际执行的解析器。
-- MinerU 尚未实现：摄入入口抛出 `ParserUnavailableError`（携带 assessment），
+  MinerU 4.x Basic 已接入：复杂度路由选择 `mineru` 后，通过独立环境中的
+  `mineru-kit parse --format middle_json` 执行无状态解析。命令失败、超时、
+  输出缺失或 Schema 不兼容时抛出 `MinerUError`，并在 embedding 与数据库写入前终止，
+  因此不会覆盖已有索引。
   在模型加载和数据库访问前停止，不伪造解析成功，不删除已有文档或索引。
   损坏、加密文件明确报错；本模块不负责质量修复。
 
@@ -199,8 +202,8 @@ cd backend
 
 测试在临时目录生成正常、表格、长文档、扫描、混合、旋转、重叠图片、空白、加密、损坏
 PDF，并验证现有四份知识库 PDF。真实 PG 测试使用唯一测试文档 ID，结束后仅清理该 ID。
-三类业务坏文档生成/修复、扫描件视觉方向与 OCR 级倾斜检测、
-MinerU/PaddleOCR 适配仍待后续交付。
+MinerU 4.x Basic 适配已完成；三类坏文档中旋转扫描件已完成解析检索闭环。
+模糊繁体增强、缺失层级恢复、扫描件视觉方向检测和 PaddleOCR 兜底仍待后续交付。
 
 增量登记（2026-09-23，B 实现并完成回归验证）：新增可选 `meta.complexity_details`，
 实现已有 `meta.complexity`；所有冻结字段与语义保持不变。
@@ -297,7 +300,8 @@ cd backend
   用于清晰度、OCR 和繁简修复。
 
 资产存放于 `data/docs_bad/`，不会被正常的 `scripts/ingest_docs.py` 自动摄入。
-当前只完成缺陷资产生成和检测，不宣称 MinerU/OCR 修复闭环完成。
+三类缺陷资产均已完成生成与检测。其中旋转扫描件已完成 MinerU 解析、入库和检索闭环；
+模糊繁体扫描件的正文恢复、目录结构缺失文档的层级恢复仍待增强。
 
 验收结果（2026-09-27）：
 
@@ -307,3 +311,49 @@ cd backend
 - 旋转扫描和模糊繁体扫描均为复杂度 5，选择 `mineru`；
 - 目录结构缺失文档为复杂度 1，选择 `pymupdf`，但不产生可靠章节层级；
 - 模糊繁体样本在 OCR 前不伪造繁体识别结果。
+
+## W2 B 增量：MinerU 4.x 扫描件解析
+
+本增量完成复杂 PDF/扫描件从路由选择到检索入库的实际执行闭环。
+
+- MinerU 使用独立 Python 3.12 环境，当前验证版本为 `4.0.7`；
+- 默认使用 Basic tier、ONNX small backend 和 CPU 表格模型；
+- 后端通过 `MINERU_BIN` 调用无状态 `mineru-kit parse`，不污染主项目虚拟环境；
+- 解析产物固定使用 `docvortex.middle` v2 Middle JSON；
+- MinerU 的 `page_idx` 从 0-based 转换为 IR 的 1-based；
+- 归一化 bbox 根据 `width_pt`、`height_pt` 转换为 PDF point；
+- 旋转页面通过 PyMuPDF `derotation_matrix` 转回冻结的未旋转坐标语义；
+- 页眉、页脚不进入 BlockIR 和检索文本；
+- `title`、`text`、`table`、`formula`、`figure` 分别映射到冻结的 BlockIR 类型；
+- MinerU 版本、tier、parse mode 和 Schema 信息保存在 `DocIR.meta.mineru`；
+- 内容不变时保留原 chunk 和 embedding，不重复向量化；
+- 命令失败或超时时，在模型加载与数据库写入前停止，保留已有索引。
+
+运行时环境变量：
+
+```bash
+export MINERU_BIN=/path/to/mqa-mineru/bin/mineru-kit
+export MINERU_HOME=/path/to/mineru-cache
+export MINERU_MODEL_SOURCE=modelscope
+export MINERU_TABLE_DEVICE=cpu
+export MINERU_TIER=basic
+export MINERU_TIMEOUT_SECONDS=600
+```
+
+验收证据：
+
+- MinerU adapter 单元测试：6 passed；
+- 复杂度、坏文档与 adapter 联合测试：41 passed；
+- 全量测试：141 passed，5 warnings，0 failure；
+- 旋转扫描件：5 blocks、1 chunk、页码与 bbox 正确；
+- 重复摄入：第二次新增 0 chunk，未重复生成 embedding；
+- PostgreSQL：5 docs、39 chunks、39/39 embeddings；
+- 扫描件检索：3/3 命中，全部为 Top-1；
+- 原有 RAG 回归：8/8，retrieval hit@6=100%。
+
+能力边界：
+
+- Basic OCR 对重度模糊繁体扫描件仅恢复部分文本，仍需增强预处理或 Standard tier；
+- 无视觉层级信号的原生 PDF 仍需标题层级恢复模块；
+- PaddleOCR CPU 兜底尚未接入；
+- 当前 MinerU 通过宿主机独立环境执行，容器内在线摄入仍需后续服务化。

@@ -1,7 +1,7 @@
 """Explainable PDF complexity assessment and parser selection (#8, CPU only).
 
 Evidence lives in DocIR.meta, independently of the frozen block content hash.
-The pending MinerU adapter is explicitly unavailable, never silently bypassed.
+Parser execution is delegated to ingestion.parsers; assessment remains CPU-only.
 """
 
 from __future__ import annotations
@@ -59,15 +59,6 @@ class ComplexityAssessment:
         }
 
 
-class ParserUnavailableError(RuntimeError):
-    """Selected parser is unavailable; retain evidence for callers/UI reporting."""
-
-    def __init__(self, assessment: ComplexityAssessment):
-        self.assessment = assessment
-        super().__init__(
-            f"PDF complexity={assessment.level} requires {assessment.parser}; "
-            "MinerU adapter is not implemented. No document or chunks were written."
-        )
 
 
 def _union_area(rectangles: list[pymupdf.Rect]) -> float:
