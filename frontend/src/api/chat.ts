@@ -1,5 +1,7 @@
 import type { SSEEvent } from '../types'
 
+export const FIRST_EVENT_TIMEOUT_MS = 12_000
+
 export async function streamChat(
   question: string,
   sessionId: string,
@@ -9,29 +11,31 @@ export async function streamChat(
   const controller = new AbortController()
   const forwardAbort = () => controller.abort()
   signal?.addEventListener('abort', forwardAbort, { once: true })
-  const timeoutId = window.setTimeout(() => controller.abort(), 12_000)
-  let response: Response
+  // Only guard the pre-first-event phase. Once the server has started the
+  // stream, a slow HYBRID/DB turn must be allowed to finish without a total
+  // request deadline; the caller can still abort through the supplied signal.
+  let firstEventReceived = false
+  const firstEventTimeout = setTimeout(() => controller.abort(), FIRST_EVENT_TIMEOUT_MS)
+  const markFirstEvent = () => {
+    if (!firstEventReceived) {
+      firstEventReceived = true
+      clearTimeout(firstEventTimeout)
+    }
+  }
+
   try {
-    response = await fetch('/api/chat/stream', {
+    const response = await fetch('/api/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
       body: JSON.stringify({ question, session_id: sessionId }),
       signal: controller.signal,
     })
-  } catch (error) {
-    signal?.removeEventListener('abort', forwardAbort)
-    throw error
-  } finally {
-    window.clearTimeout(timeoutId)
-  }
+    if (!response.ok) throw new Error(`请求失败（HTTP ${response.status}）`)
+    if (!response.headers.get('content-type')?.includes('text/event-stream')) {
+      throw new Error('服务未返回事件流，请检查 /api 反向代理配置')
+    }
+    if (!response.body) throw new Error('浏览器未返回可读取的数据流')
 
-  if (!response.ok) throw new Error(`请求失败（HTTP ${response.status}）`)
-  if (!response.headers.get('content-type')?.includes('text/event-stream')) {
-    throw new Error('服务未返回事件流，请检查 /api 反向代理配置')
-  }
-  if (!response.body) throw new Error('浏览器未返回可读取的数据流')
-
-  try {
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
@@ -43,15 +47,24 @@ export async function streamChat(
       while (boundary !== -1) {
         const parsed = parseSSEBlock(buffer.slice(0, boundary))
         buffer = buffer.slice(boundary + 2)
-        if (parsed) onEvent(parsed)
+        if (parsed) {
+          markFirstEvent()
+          onEvent(parsed)
+        }
         boundary = buffer.indexOf('\n\n')
       }
       if (done) break
     }
 
     const tail = parseSSEBlock(buffer)
-    if (tail) onEvent(tail)
+    if (tail) {
+      markFirstEvent()
+      onEvent(tail)
+    }
+  } catch (error) {
+    throw error
   } finally {
+    clearTimeout(firstEventTimeout)
     signal?.removeEventListener('abort', forwardAbort)
   }
 }
