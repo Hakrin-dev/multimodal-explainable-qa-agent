@@ -37,7 +37,10 @@ class EmbeddingService:
                 raise FileNotFoundError(
                     f"local embedding model not found: {path} "
                     f"(set EMBEDDING_MODEL_PATH or download per README)")
-            self._model = SentenceTransformer(str(path), device="cpu")
+            self._model = SentenceTransformer(
+                str(path),
+                device=self.settings.embedding_device,
+            )
         return self._model
 
     # -- public api ---------------------------------------------------------
@@ -49,8 +52,15 @@ class EmbeddingService:
         if provider == "local":
             model = self._load_local()
             with self._lock:  # sentence-transformers is not thread-safe
-                return np.asarray(model.encode(texts, normalize_embeddings=True,
-                                               show_progress_bar=False), dtype=np.float32)
+                return np.asarray(
+                    model.encode(
+                        texts,
+                        batch_size=self.settings.embedding_batch_size,
+                        normalize_embeddings=True,
+                        show_progress_bar=False,
+                    ),
+                    dtype=np.float32,
+                )
         if provider == "siliconflow":
             return self._embed_api(texts)
         if provider == "mock":

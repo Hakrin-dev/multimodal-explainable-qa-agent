@@ -83,6 +83,8 @@ class Settings(BaseSettings):
     # ---- embedding (D9-B: local first, SiliconFlow API fallback) ----
     embedding_provider: str = "local"  # local | siliconflow | mock
     embedding_model_path: str = "models/bge-small-zh-v1.5"  # relative to repo
+    embedding_device: str = "cpu"  # cpu | cuda | cuda:N
+    embedding_batch_size: int = Field(default=32, ge=1, le=1024)
     siliconflow_embedding_model: str = "BAAI/bge-m3"
 
     # ---- agent kernel ----
