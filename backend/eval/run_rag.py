@@ -33,10 +33,13 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--cases", default=str(Path(__file__).parent / "cases/rag_single_doc.jsonl"))
     ap.add_argument("--top-k", type=int, default=6)
+    ap.add_argument("--only-ids", default="", help="comma-separated case id filter (for level runner)")
     args = ap.parse_args()
 
     s = get_settings()
-    cases = [json.loads(l) for l in Path(args.cases).read_text(encoding="utf-8").splitlines() if l.strip()]
+    only = {x.strip() for x in args.only_ids.split(",") if x.strip()}
+    cases = [json.loads(l) for l in Path(args.cases).read_text(encoding="utf-8").splitlines()
+             if l.strip() and (not only or json.loads(l)["id"] in only)]
     print(f"provider={s.llm_provider} model={s.active_model} "
           f"embedding={s.embedding_provider} cases={len(cases)}\n")
 

@@ -56,3 +56,18 @@ pnpm test && pnpm build
 
 W1 地基+选型+最小闭环 → W2 编排内核+缓存 → W3 中级任务主攻(#1/#2/#4/#5) → W4 跨源+澄清 → W5 打磨提交。
 当前状态见 [docs/weekly/W1_progress.md](./docs/weekly/W1_progress.md)。
+
+### 分级评测（C 角色）
+
+评测入口统一收敛到 `backend/eval/run_levels.py`：
+
+```bash
+cd backend
+python eval/run_levels.py --level L0                 # 每类 5 个 smoke 用例
+python eval/run_levels.py --level L1                 # 全量、当前配置模型
+python eval/run_levels.py --level L2 --providers deepseek,qwen --repeats 3
+```
+
+每次 family runner 的明细仍按原有格式写入 `backend/var/eval/`，调度清单写入
+`levels_<level>_<timestamp>.json`，便于周报和趋势脚本消费。`--provider`/`--providers`
+只通过环境变量切换模型，不修改评测代码。
