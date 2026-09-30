@@ -78,3 +78,42 @@
    黑名单 40 词 + 跨 canonical 歧义按**基础词规则**消解（Rock ⊂ Rock And Roll → 别名归 Rock），
    剩余歧义 0；规则已固化进 gen_aliases.py（review_prune）保证再生成安全
 3. 环境：Windows 会话残留已清理（.workbuddy/ 移除 + gitignore；Windows 侧日志删除）
+
+
+## A 复审 B/C（2026-09-30，审阅 af178df 及此前 B/C 提交）
+
+**结论：合入。** B 摄入流水线 v1 与 C 前端超时+分级评测三线声明全部本机复现；复审修正一处落地。
+
+### B（Songxy0919）摄入流水线 v1 — ✅ 合入
+
+提交链：`8da6c5c`(复杂度评分 #8+解析路由) → `6c7a976`(质量评估 #9 rules-v1) → `2917c94`(三类坏文档资产) → `d253ceb`(MinerU 4.x 扫描件闭环) → `bfa6261`(embedding device/batch 配置化，W3 BGE-M3 切换基建)。对应 PLAN §13 W2→W3 顺延的 B 主交付，#9/#7/#8 阻塞解除。
+
+本机复现（A 侧 WSL，mqa-db 容器）：
+
+| 项 | B 声明 | A 复现 |
+|---|---|---|
+| pytest | 141 (MinerU 后) | **146/146**（+5 test_embedding_config，一致） |
+| 摄入幂等 | 4 docs / 0 new chunks | ✅ 一致（content hash 判重） |
+| meta quality+complexity | score 0.99+ / cx 1 | ✅ 0.9912~0.9953 / 1 / has_text_layer=true / warnings=[] |
+| RAG | 8/8 retrieval hit@6 | ✅ 8/8 retrieval hit@6=100% / answer hit=100%（真 DeepSeek） |
+| 坏文档资产 | 3 类 fixtures | ✅ test_bad_docs 5 passed |
+
+代码审查：`mineru.py` 契约保真度高（docvortex.middle v2 schema 严格校验、subprocess 隔离+tempdir 清理+600s timeout env 可配、bbox 归一化→点+旋转反归一化、header/footer 过滤不入检索）；`quality.py` 5 维信号+结构化 warnings+1-based 页码；边界诚实（"不等同 OCR 字符准确率""不承担全文简繁转换"）。
+
+**复审修正一处**：`mineru._resolve_binary` 错误消息硬编码 B 机器路径 `/home/sxy/.venvs/mqa-mineru/...` → 改为通用提示（避免误导其他开发者；测试无断言该路径，55/55 绿）。
+
+遗留建议（非阻塞，记入 C 后续）：
+
+- `run_rag.py` 尾注 `(with mock LLM, answer hit is expected 0%)` 为固定文案，实际 provider 已是 deepseek 仍显示 mock 误导——建议按 `s.llm_provider` 动态化（A 尝试改时因 Git Bash→wsl.exe 双引号传参吃反斜杠导致 f-string `\n` 转义破坏，已回退，留 C 修）
+
+### C（LYR-t）前端超时 + 分级评测 — ✅ 合入
+
+- `20ef563`：前端 SSE 总超时改**首事件超时**（12s 内收不到任何事件才中止，收到后 `clearTimeout`，HYBRID/复杂 DB_QUERY 允许跑完；用户 `AbortSignal` 仍可手动停）。慢轮次回归测试（60s 流不触发 abort）覆盖。逻辑正确；`catch(error){throw error}` 是无操作冗余，可后续清理。
+- `af178df`：`eval/run_levels.py` 统一调度 L0/L1/L2，family runner 加 `--only-ids`，manifest 落 `var/eval/levels_*.json`。本机 L0 实测 **3 runs 0 failures**（multiturn L0 跑 mts-001~004 共 14 轮全过，真 DeepSeek）。
+
+遗留建议（非阻塞）：
+
+- `run_levels.py` L0 nl2sql family `--only-ids` 取合并列表前 5（全为 single-table），L0 smoke 永不覆盖 multi-table——建议 single 取 3 + multi 取 2
+- `run_rag.py`/`run_multiturn.py` 的 `--only-ids` 过滤 `json.loads(l)` 每行调两次，轻微冗余
+
+> B/C 三线顺延项至此全部收口；A 侧 W3 100% + W4-D1 开工。
