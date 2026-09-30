@@ -13,6 +13,9 @@ reportlab>=4.0
 jieba>=0.42
 numpy>=1.26
 sentence-transformers>=3.0
+Pillow>=10.0
+python-multipart>=0.0.9
+opencc-python-reimplemented>=0.1.7
 # torch: install CPU build separately (default pypi wheel pulls ~2.5GB CUDA):
 #   pip install torch --index-url https://download.pytorch.org/whl/cpu
 

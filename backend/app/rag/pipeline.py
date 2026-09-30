@@ -24,6 +24,7 @@ from ..ingestion.complexity import assess_pdf
 from ..ingestion.parsers import mineru as mineru_parser
 from ..ingestion.ir import DocIR
 from ..ingestion.quality import assess_quality
+from ..ingestion.structure import recover_flat_headings
 from .embedding import EmbeddingService, get_embedding_service
 from .retriever import ChunkHit, HybridRetriever
 from .store import KBStore
@@ -52,6 +53,7 @@ def ingest_document(
 
     if assessment.parser == "pymupdf":
         doc = pdf_ingest.parse_pdf(path)
+        recover_flat_headings(doc)
     elif assessment.parser == "mineru":
         doc = mineru_parser.parse_pdf(path)
     else:
