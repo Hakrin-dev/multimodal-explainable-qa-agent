@@ -138,7 +138,7 @@ raw file ──► 质量评估(#9) ──► 复杂度评分(#8) ──► 解�
 | 复杂度评分 1-5 + 解析路由（#8 轻量） | ✅ 规则评分、路由选择与 MinerU 执行已接入 | `complexity.py`；`rag.pipeline.ingest_document` |
 | MinerU 4.x Basic 扫描件解析 | ✅ Middle JSON v2 → DocIR；PaddleOCR 兜底仍待接入 | `parsers/mineru.py`；`rag.pipeline.ingest_document` |
 | 目录信号融合 + LLM 层级判定（#7 完整版） | ⬜ 决赛 | `pdf_ingest` 扩展 |
-| 公式登记（#6） | ⬜ W2 | LLM 从 blocks 抽 LaTeX→FormulaIR |
+| 公式登记（#6） | ✅ W4-D1 seed（A 代建 kb_formula + 手工登记；LLM 自动抽取 ⬜ 决赛） | `scripts/seed_formulas.py` + `app/formula/store.py` |
 | 坏文档生成器（3 份，W2 演示用） | ✅ 三类资产完成；旋转扫描件已完成解析检索闭环，其余两类待增强 | `scripts/gen_bad_docs.py`；`tests/test_bad_docs.py` |
 
 ## 变更记录

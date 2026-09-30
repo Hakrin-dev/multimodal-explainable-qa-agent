@@ -99,7 +99,16 @@ def main() -> None:
         return f"plan→{sum(1 for l in labels if l.startswith('subtask_'))}子任务→fuse"
     check(6, "跨源多跳（DAG）", s6)
 
-    rows.append(("7. 公式计算（提成代入）", "○ W4", "formula_eval 引擎 + B 公式登记"))
+    # 7 公式计算：提成代入（W4-D1）
+    def s7():
+        d = _post(base, "/api/chat",
+                  {"question": "按员工手册提成公式 Jane 名下客户的总消费提成多少",
+                   "session_id": "demo7"})
+        assert d["status"] == "ok", f"status={d['status']}"
+        assert d["data"].get("value") is not None, "no value"
+        assert d["data"].get("steps"), "no steps"
+        return f"提成=¥{d['data']['value']:g} (steps={len(d['data']['steps'])})"
+    check(7, "公式计算（提成代入）", s7)
 
     # 8 多轮对话（5+ 轮含指代）—— 由 mts-004 代表
     def s8():

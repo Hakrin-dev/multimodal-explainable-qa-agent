@@ -52,7 +52,7 @@ def default_registry() -> ToolRegistry:
                                         "返回带引用的答案", _tool_rag))
     reg.register(ToolSpec("db_lookup_entity", "术语反查：把业务别名映射到标准实体（如 帝都->北京）",
                            _tool_db_lookup_entity))
-    reg.register(ToolSpec("formula_eval", "公式计算：按文档登记的公式代入参数计算（W4 提供）",
+    reg.register(ToolSpec("formula_eval", "公式计算：按文档登记的公式（如销售提成）代入参数计算，参数值可来自数据库/文档/用户输入",
                            _tool_formula_eval))
     return reg
 
@@ -130,6 +130,22 @@ def _tool_db_lookup_entity(term: str, **_: Any) -> ToolResult:
         "matches": [{"canonical": r[0], "binding": r[1], "description": r[2]} for r in rows]})
 
 
-def _tool_formula_eval(formula_id: str, params: dict | None = None, **_: Any) -> ToolResult:
-    # W4 公式引擎占位（FormulaIR 契约已冻结）
-    return ToolResult(ok=False, data={}, degraded_reason="公式计算引擎 W4 上线")
+def _tool_formula_eval(question: str, trace: TraceCollector,
+                       parent=None, **_: Any) -> ToolResult:
+    """Formula engine (W4-D1, #6): resolve -> bind params -> dual-eval.
+
+    Self-contained single-tool loop. The kernel routes formula questions
+    here via a keyword intercept so the frozen intent prompt is untouched.
+    Cross-source (Doc->DB) trace: param sub-queries nest under this node.
+    """
+    from ..formula.engine import FormulaEngine
+    r = FormulaEngine().run(question, trace=trace, parent=parent)
+    if not r.ok:
+        return ToolResult(ok=False, data={}, degraded_reason=r.degraded_reason)
+    nl = chr(10)
+    answer = f"计算结果：{r.value:g}{nl}计算步骤：{nl}" + nl.join(r.steps)
+    return ToolResult(ok=True, data={
+        "value": r.value, "steps": r.steps,
+        "formula": r.formula, "params": r.params,
+        "answer": answer, "citations": r.citations,
+    })
