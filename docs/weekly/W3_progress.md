@@ -117,3 +117,58 @@
 - `run_rag.py`/`run_multiturn.py` 的 `--only-ids` 过滤 `json.loads(l)` 每行调两次，轻微冗余
 
 > B/C 三线顺延项至此全部收口；A 侧 W3 100% + W4-D1 开工。
+
+## B 增量（2026-09-30）：BGE-M3 GPU 与 RAG Cross-Encoder 精排
+
+### 本次完成
+
+- 在独立 GPU 环境部署 BGE-M3，输出 1024 维归一化向量；
+- EmbeddingService 新增可配置 device 和 batch size，CPU 默认行为保持不变；
+- 使用独立数据库 `chinook_bge_m3_sxy` 完成 1024 维知识库重建，
+  共 5 docs、39 chunks、39/39 embeddings，未修改原 512 维主库；
+- 部署 `bge-reranker-v2-m3`，实现 RRF Top-20 → Cross-Encoder → Top-K；
+- 新增 reranker 开关、模型路径、设备、batch、候选数和最大长度配置；
+- reranker 模型按需加载；失败时记录告警并回退原 RRF 排名；
+- Citation 六字段保持不变，`score` 保留 RRF 语义；
+  原始 Cross-Encoder logit 仅写入调试字段 `rerank_score`；
+- 新增 `eval/ablate_rag_rerank.py`，在相同候选与 embedding 下比较
+  Hit@1、Hit@6、MRR、Top-1 变化和稳态延迟。
+
+### GPU 验证
+
+| 指标 | 结果 |
+|---|---:|
+| GPU | NVIDIA GeForce RTX 5090 |
+| BGE-M3 向量维度 | 1024 |
+| BGE-M3 峰值显存 | 约 2.20 GiB |
+| BGE-M3 吞吐 | 约 1318 texts/s（256 条短文本） |
+| BGE-M3 + reranker 同驻显存 | 约 4.37 GiB |
+| 独立 Top-20 rerank P50/P95 | 12.36 / 12.39 ms |
+
+### RAG 消融结果
+
+测试集为现有 8 条单文档 RAG 用例，数据库为 5 docs / 39 chunks。
+
+| 指标 | RRF | RRF + reranker |
+|---|---:|---:|
+| Hit@1 | 100% | 100% |
+| Hit@6 | 100% | 100% |
+| MRR | 1.000 | 1.000 |
+| 稳态 P50 | 11.78 ms | 53.98 ms |
+| 稳态 P95 | 12.96 ms | 58.22 ms |
+| Top-1 发生变化 | — | 0/8 |
+
+当前用例在 BGE-M3 + RRF 下已经全部 Top-1，因而本轮不能宣称 reranker
+提升准确率；可以确认精排未降低当前召回，并以约 42 ms 稳态增量完成可配置接入。
+后续需增加近义干扰、跨文档冲突和长文档候选集，才能评价精排的真实增益。
+
+### 回归与边界
+
+- reranker 专项及 RAG 测试：12 passed；
+- CPU 主库全量回归：152 passed，5 warnings，0 failure；
+- 模型目录由 `.gitignore` 排除，不进入版本库；
+- 默认 `RERANK_ENABLED=0`，CPU 和现有容器部署行为不变；
+- GPU 部署通过环境变量显式开启；
+- 当前仅实现本地 reranker，SiliconFlow rerank API 备胎和困难评测集待后续；
+- 当前完成 W3 B 的 GPU embedding 与精排增量，不代表忠实度自检和
+  10 份知识库扩充已经完成。

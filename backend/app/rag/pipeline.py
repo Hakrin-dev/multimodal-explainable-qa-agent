@@ -114,9 +114,20 @@ class RAGPipeline:
             hits: list[ChunkHit] = self.retriever.search(question, top_k=top_k)
             result.citations = [h.citation() for h in hits]
             result.hits = [
-                {"doc": h.chunk.doc_name, "page": h.chunk.page_start,
-                 "score": h.score, "vector": round(h.vector_score, 4),
-                 "text": h.chunk.text[:200]}
+                {
+                    "doc": h.chunk.doc_name,
+                    "page": h.chunk.page_start,
+                    "score": h.score,
+                    "vector": round(h.vector_score, 4),
+                    "bm25": round(h.bm25_score, 4),
+                    "rrf": round(h.rrf_score, 4),
+                    "rerank": (
+                        round(h.rerank_score, 4)
+                        if h.rerank_score is not None
+                        else None
+                    ),
+                    "text": h.chunk.text[:200],
+                }
                 for h in hits
             ]
             if parent is None:   # kernel finishes its own node later
