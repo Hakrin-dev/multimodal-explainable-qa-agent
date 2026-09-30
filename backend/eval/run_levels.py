@@ -72,6 +72,10 @@ def main() -> None:
                 env = os.environ.copy()
                 if provider:
                     env["LLM_PROVIDER"] = provider
+                    # clear any .env LLM_MODEL override so active_model falls
+                    # back to the provider default (e.g. qwen-plus), otherwise a
+                    # stale model name leaks across providers (404 model_not_found)
+                    env["LLM_MODEL"] = ""
                 print(f"\n=== {args.level} provider={provider or 'configured'} repeat={repeat} family={family} ===")
                 completed = subprocess.run(cmd, cwd=BACKEND, env=env, check=False)
                 attempts = 1

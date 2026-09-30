@@ -138,3 +138,49 @@ W4-D3 的 L1 首跑暴露 **WSL2 + docker-proxy 在持续混合负载下断 5433
 - `app/db/session.py`：`get_conn` 连接建立重试
 
 > **A 侧 W4 全部完成**（D1 公式引擎#6 / D2 跨源评测+两修复 / D3 类型⑤+挂接+L1）。跨源五类型全覆盖、可测、可演示；L1 全量回归达标。
+
+
+
+## D4（9/30）· W4 收尾 —— L2 首次全量回归 + A 侧 W4 收口
+
+### L2 首次全量回归（PLAN W4 产出）
+
+命令：`python eval/run_levels.py --level L2 --providers deepseek,qwen --repeats 3`（全量家族 × 主备模型 × 3 重复）。
+
+| family | DeepSeek-V3（主力） | Qwen-Plus（备胎） |
+|---|---|---|
+| NL2SQL（31 用例） | **31/31 = 100%**（首过 97%） | 25/31 = 81%（首过 77%） |
+| RAG（8 用例） | retrieval 100% / answer 100% | retrieval 100% / answer 88% |
+| 多轮（4 脚本 14 轮） | **14/14** | 11/14 |
+| 跨源（11 用例） | **11/11 = 100%** | 9/11 = 82% |
+
+24 次 family 运行（2 provider × 3 重复 × 4 family），**各 provider 三次重复结果完全一致（方差 0）**。
+
+- **DeepSeek 全面优于 Qwen**：NL2SQL +19pt、多轮 +3 轮、跨源 +18pt → 主力模型定案与 W1 选型结论方向一致且差距扩大
+- 关键洞察：**Qwen 的跨源 intent/tool/subtask 路由仍 100%**，落后仅在生成质量（fact hit 75%）与多轮保持（11/14）→ 路由能力不依赖模型质量，生成质量才是模型差异
+- DeepSeek 各 family 三次重复全绿且零 infra 重试；Qwen 亦稳定（方差 0），可作可靠降级备胎
+- 修复两处（仅评测层，不动业务）：
+  1. L2 切 provider 时清空 `.env` 的 `LLM_MODEL`（否则 `deepseek-chat` 泄漏到 qwen → 404 `model_not_found`）
+  2. `run_cross_source` 不再以准确率设退出码（否则 qwen 的真实低分被 `run_levels` 误当 infra 失败重试 3 次——实测发生，24 runs 中 3 个 qwen cross_source 各重试到 attempts=4）；退出码只留给真实 infra 异常
+
+> 修复：L2 切换 provider 时清空 `.env` 的 `LLM_MODEL`（否则 `deepseek-chat` 泄漏到 qwen → 404 `model_not_found`）——`eval/run_levels.py`。
+
+### A 侧 W4 收口总结
+
+| PLAN §13 W4 A 任务 | 状态 |
+|---|---|
+| 跨源多跳（规划器 + 2 种类型演示级） | ✅ **超额**：五类型全覆盖（①DB→Doc ②Doc→DB ③Doc→Doc ④DB+Doc ⑤跨源多轮续查） |
+| 澄清基础版（槽位矩阵 + 选项式交互 + 回填续查） | ✅ W2-D2/D4 交付（外置槽位矩阵 `data/slot_matrix.json` + 选项补强 + 澄清恢复） |
+| 10 场景 8 可跑（W4 产出） | ✅ **9/10**（`scripts/demo_scenarios.py`；仅 #9 文档管理台依赖 C） |
+| L2 首次全量回归（W4 产出） | ✅ 见上 |
+
+A 侧 W4 四日交付：
+
+| 日 | 交付 | 关键结果 |
+|---|---|---|
+| D1 | 公式引擎 #6（跨源类型②） | `app/formula/`；kb_formula + seed；demo #7（Jane 提成 24.99）；pytest +9 |
+| D2 | 跨源评测体系 + 两修复（类型③④） | cross_source 用例集 + runner；多文档对比路由 + fuse 措辞；10/10 |
+| D3 | 类型⑤多轮续查 + 挂接分级评测 + L1 | cs-011 多轮；run_levels 挂 cross_source；**L1 全绿（4 family 100%）** |
+| D4 | L2 首次全量 + 收尾 | 见上；README 刷新；B/C 交接清单 |
+
+**遗留（B/C 主责）**：见 [W4_handoff.md](./W4_handoff.md)。最高优先：#9 文档管理台闭环（唯一不可演示场景）、#7 坏文档目录重建。

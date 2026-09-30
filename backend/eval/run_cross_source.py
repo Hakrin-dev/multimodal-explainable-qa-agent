@@ -149,7 +149,9 @@ def main() -> None:
         "results": results,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"report: {out.relative_to(BACKEND.parent)}")
-    raise SystemExit(0 if passed == n else 1)
+    # Do NOT exit non-zero on an accuracy shortfall: run_levels treats a
+    # non-zero family return code as infra failure and retries the whole
+    # family. Accuracy is reported, not signaled; infra errors raise.
 
 
 if __name__ == "__main__":
