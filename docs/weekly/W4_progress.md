@@ -99,3 +99,42 @@ W4-D1 攻下跨源类型②后，D2 补齐"可测 + 可演示"：新增跨源多
 - 类型⑤"澄清后跨源续查"：当前验证澄清触发（status=clarify）；"澄清回填 → 跨源续查"完整链路已由 mts-003（澄清恢复）覆盖，跨源续查可 W4-D3 补脚本
 - 跨源用例集应与 C 的 `run_levels.py` 挂接（L1/L2 纳入跨源 family）——C 侧改动，已记入交接
 - 关键事实断言为宽松包含匹配；LLM-as-judge 交叉评留决赛
+
+
+## D3（9/30）· A 完成 ✅ —— 类型⑤跨源多轮续查 + 跨源 family 挂接分级评测 + L1 全量回归
+
+| 项 | 状态 | 关键结果 |
+|---|---|---|
+| 类型⑤ 跨源多轮续查（cs-011） | ✅ | 3 轮：跨源公式问答（Jane 24.99）→ 指代续查（Margaret 23.26）→ 无数据诚实降级（Nancy degraded） |
+| run_cross_source 多轮支持 | ✅ | turns 数组用例 + `--only-ids` + 用例级 pass/fail + exit code；11 用例 **11/11 = 100%** |
+| 跨源 family 挂接 run_levels | ✅ | DEFAULTS + runner 映射加 `cross_source`，L0/L1 纳入跨源调度（C 侧评测体系） |
+| **L1 全量回归（4 family）** | ✅ | nl2sql **31/31=100%**（首过 96.8%）· rag **8/8=100%** · multiturn **4/4 脚本 14/14 轮** · cross_source **11/11=100%** |
+| 评测基建加固 | ✅ | 见下（WSL2 docker-proxy 5433 断连） |
+
+### 类型⑤ 跨源多轮续查实测（cs-011）
+
+| 轮 | 问题 | 路由 | 结果 |
+|---|---|---|---|
+| T1 | 按员工手册提成公式，Jane 的提成是多少 | formula_eval | 24.99 ✅ |
+| T2 | 那 Margaret 呢 | formula_eval（改写含 Margaret） | 23.26 ✅ |
+| T3 | 那 Nancy 呢 | formula_eval | degraded（Nancy 无客户数据，**诚实降级**）✅ |
+
+> 设计取舍：probe 显示"缺实体澄清→续查"多轮不收敛（LLM 反复追加槽位）、"双实体对比"超出 formula_eval 单参数能力；故类型⑤采用**跨源多轮指代续查**（含无数据降级），澄清触发已由 cs-009/010 覆盖、澄清恢复由 mts-003 覆盖。
+
+### 环境问题与加固（重要）
+
+W4-D3 的 L1 首跑暴露 **WSL2 + docker-proxy 在持续混合负载下断 5433**（W3 已记录），表现为 nl2sql 用例 `connection failed` → passed=false。关键洞察：`run_nl2sql` 把用例异常记为 passed=false 后**仍返回 0**，故 family 级重试抓不到；需**连接级**重试。加固：
+
+1. `app/db/session.py` `get_conn`：连接建立重试 5 次（间隔 2/4/6/8s，最长 20s，健康网络零开销）——一处覆盖 nl2sql/rag/agent/formula 全部 DB 访问
+2. `eval/run_levels.py`：family 级 infra 重试（rc≠0 时 15s×3）
+
+验证：断连期 nl2sql 报 29/31（mt-007/008 error=5433），单独重跑 **2/2 → 真实准确率 100%**；加固 + 干净重启 db 后 L1 **一次全绿、无重试触发**。
+
+### 新增/变更文件
+
+- `eval/cases/cross_source.jsonl`：+cs-011（类型⑤ 多轮，3 轮）
+- `eval/run_cross_source.py`：多轮 `turns` 支持 + `--only-ids` + 用例级 pass/fail + 退出码
+- `eval/run_levels.py`：+`cross_source` family + family 级 infra 重试（C 侧脚本，A 协作）
+- `app/db/session.py`：`get_conn` 连接建立重试
+
+> **A 侧 W4 全部完成**（D1 公式引擎#6 / D2 跨源评测+两修复 / D3 类型⑤+挂接+L1）。跨源五类型全覆盖、可测、可演示；L1 全量回归达标。
