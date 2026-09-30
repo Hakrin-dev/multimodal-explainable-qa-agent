@@ -56,3 +56,46 @@
 - **B 公式登记自动化**：当前 seed 脚本手工登记 1 公式；B 的摄入期"LLM 从 blocks 抽 LaTeX→FormulaIR"（契约 §4 表格 ⬜ W2）仍未做——A 代建 kb_formula 表 + seed 1 公式（precedent: W1-D2+ A 代 B 建 KB docs v0）。决赛扩到多公式时需 B 在摄入期自动登记（参数 desc/source 标注准确）。
 - **跨源类型③④⑤**（Doc→Doc 多文档对比 / DB 结果+Doc 背景解释综合 / 澄清后跨源续查）：W4-D2 起按演示需求推进，决赛覆盖 ≥5 种类型。
 - **场景 #9 文档管理台**：依赖 C 管理台 + B 上传/质量报告/修复 API（B 摄入流水线 v1 已就绪 #9 检测器，C 管理台待做）。
+
+
+## D2（9/30）· A 完成 ✅ —— 跨源多跳评测体系 + 两类路由/生成修复（五类型全通）
+
+W4-D1 攻下跨源类型②后，D2 补齐"可测 + 可演示"：新增跨源多跳评测用例集与 runner，并修两处路由/生成质量。
+
+| 项 | 状态 | 关键结果 |
+|---|---|---|
+| 跨源用例集 `eval/cases/cross_source.jsonl` | ✅ | 10 用例覆盖 PLAN §4.5 五类型（每类 2 个）：①DB→Doc ②Doc→DB ③Doc→Doc ④DB+Doc ⑤澄清 |
+| 跨源 runner `eval/run_cross_source.py` | ✅ | 断言 intent / 工具集 / 子任务数 / 关键事实；报告落 `var/eval/cross_source_*.json` |
+| **多文档对比路由修复** | ✅ | 类型③ 原 LLM 判 DOC_QUERY → 单 rag_search 偶然命中两文档；新增 kernel `multidoc_intercept`（对比词+文档名词）→ 强制 HYBRID 两路独立 rag_search 并发 + fuse 对比 |
+| **fuse 证据使用提示** | ✅ | `build_fuse_messages` 动态层加"子任务结果已含依据则直接作答，勿称未找到/无法确认"（FUSE_STATIC 冻结静态文本零改动，前缀缓存不受影响） |
+| 跨源评测结果 | ✅ | **10/10 全通过**：intent 路由 100% / tool 路由 100% / 子任务规划 100% / 关键事实命中 100% |
+| 回归 | ✅ | pytest **158/158**（155+3）；多轮 **4/4 脚本 14/14 轮** |
+
+### 五类型实测（`eval/run_cross_source.py`，deepseek）
+
+| 用例 | 类型 | intent | 工具 | 子任务 | 关键事实 |
+|---|---|---|---|---|---|
+| cs-001/002 | ①DB→Doc | HYBRID | nl2sql+rag_search | 2 | Margaret / Jane ✅ |
+| cs-003/004 | ②Doc→DB | HYBRID(formula) | formula_eval | 0 | 24.99 / 23.26 ✅ |
+| cs-005/006 | ③Doc→Doc | HYBRID | rag_search×2 | 2 | 10天+48小时 / 5天+三级 ✅ |
+| cs-007/008 | ④DB+Doc | HYBRID | nl2sql+rag_search | 2 | Rock / USA ✅ |
+| cs-009/010 | ⑤澄清 | AMBIGUOUS | — | 0 | status=clarify ✅ |
+
+### 关键决策
+
+1. **类型③ 走 kernel intercept 而非改 intent prompt**：intent prompt 冻结 v1.0 不动；`_is_multidoc_compare`（和/与/对比/分别/比较 + 手册/制度/SOP/文档/规定…）在 kernel 层拦截，intercept 后重写 `ir.intent="HYBRID"` 使 `result.intent` 反映实际路由（可解释性）；`multidoc_intercept` STEP span 入 Trace。
+2. **fuse 保守措辞只改动态层**：FUSE_STATIC 属冻结家族（W2-D1 v1.0），文本零改动；提示加在 `build_fuse_messages` 的 user 动态层，保住前缀缓存与双百基线。
+3. **fact-hit 作为答案质量代理**：路由指标（intent/tools/subtasks）确定性、零成本；事实命中为质量代理，LLM-as-judge 留后续。
+
+### 新增/变更文件
+
+- `eval/cases/cross_source.jsonl`（10 用例）、`eval/run_cross_source.py`（runner）
+- `app/agent/kernel.py`：+`_is_multidoc_compare` helper + `multidoc_intercept` 分支（重写 ir.intent=HYBRID）
+- `app/agent/planner.py`：`build_fuse_messages` 动态层证据使用提示
+- `tests/test_cross_source.py`（+3 测试）
+
+### 遗留与后续
+
+- 类型⑤"澄清后跨源续查"：当前验证澄清触发（status=clarify）；"澄清回填 → 跨源续查"完整链路已由 mts-003（澄清恢复）覆盖，跨源续查可 W4-D3 补脚本
+- 跨源用例集应与 C 的 `run_levels.py` 挂接（L1/L2 纳入跨源 family）——C 侧改动，已记入交接
+- 关键事实断言为宽松包含匹配；LLM-as-judge 交叉评留决赛
