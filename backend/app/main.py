@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from .core.config import get_settings
@@ -36,6 +36,13 @@ class RAGRequest(BaseModel):
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     session_id: str = "default"
+
+
+class DocumentRepairRequest(BaseModel):
+    correct_orientation: bool = True
+    enhance_clarity: bool = True
+    run_ocr: bool = True
+    normalize_traditional: bool = True
 
 
 @app.get("/api/health")
@@ -144,6 +151,66 @@ async def chat_stream(req: ChatRequest):
                                           "X-Accel-Buffering": "no"})
 
 
+@app.post("/api/docs/upload", status_code=201)
+async def upload_document(
+    file: UploadFile = File(...),
+) -> dict[str, Any]:
+    """Upload and assess a PDF without indexing it."""
+    from .ingestion import documents
+
+    try:
+        content = await file.read(
+            documents.MAX_UPLOAD_BYTES + 1
+        )
+        return documents.save_upload(
+            file.filename,
+            content,
+        )
+    except documents.DocumentTooLargeError as exc:
+        raise HTTPException(413, str(exc)) from exc
+    except documents.DocumentValidationError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    finally:
+        await file.close()
+
+
+@app.get("/api/docs/{doc_id}/quality")
+def get_document_quality(doc_id: str) -> dict[str, Any]:
+    """Return original/repaired quality and complexity reports."""
+    from .ingestion import documents
+
+    try:
+        return documents.quality_report(doc_id)
+    except documents.ManagedDocumentNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except documents.DocumentValidationError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@app.post("/api/docs/{doc_id}/repair")
+def repair_document(
+    doc_id: str,
+    req: DocumentRepairRequest,
+) -> dict[str, Any]:
+    """Create a repaired copy and optionally run OCR normalization."""
+    from .ingestion import documents
+
+    try:
+        return documents.repair_managed_document(
+            doc_id,
+            correct_orientation=req.correct_orientation,
+            enhance_clarity=req.enhance_clarity,
+            run_ocr=req.run_ocr,
+            normalize_traditional=req.normalize_traditional,
+        )
+    except documents.ManagedDocumentNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except documents.DocumentValidationError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except documents.DocumentManagementError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @app.get("/api/docs")
 def list_docs() -> dict[str, Any]:
     """KB docs available for citation preview (front-end document picker)."""
@@ -159,17 +226,29 @@ def list_docs() -> dict[str, Any]:
 
 
 @app.get("/api/docs/{doc_id}/pdf")
-def get_doc_pdf(doc_id: str):
-    """Serve a KB PDF for citation drill-down (path-traversal safe)."""
+def get_doc_pdf(
+    doc_id: str,
+    version: str = "original",
+):
+    """Serve an original or repaired PDF safely."""
     from fastapi.responses import FileResponse
-    from .core.config import resolve_repo_path
-    if not _DOC_ID_RE.match(doc_id):
-        raise HTTPException(400, "invalid doc id")
-    path = resolve_repo_path("data/docs_raw") / f"{doc_id}.pdf"
-    if not path.is_file():
-        raise HTTPException(404, f"doc {doc_id!r} not found")
-    return FileResponse(path, media_type="application/pdf",
-                        filename=f"{doc_id}.pdf")
+    from .ingestion import documents
+
+    try:
+        path = documents.resolve_pdf(
+            doc_id,
+            version=version,
+        )
+    except documents.ManagedDocumentNotFoundError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except documents.DocumentValidationError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=f"{doc_id}-{version}.pdf",
+    )
 
 
 @app.get("/api/trace/{turn_id}")

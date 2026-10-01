@@ -55,7 +55,7 @@
 
 - **B 公式登记自动化**：当前 seed 脚本手工登记 1 公式；B 的摄入期"LLM 从 blocks 抽 LaTeX→FormulaIR"（契约 §4 表格 ⬜ W2）仍未做——A 代建 kb_formula 表 + seed 1 公式（precedent: W1-D2+ A 代 B 建 KB docs v0）。决赛扩到多公式时需 B 在摄入期自动登记（参数 desc/source 标注准确）。
 - **跨源类型③④⑤**（Doc→Doc 多文档对比 / DB 结果+Doc 背景解释综合 / 澄清后跨源续查）：W4-D2 起按演示需求推进，决赛覆盖 ≥5 种类型。
-- **场景 #9 文档管理台**：依赖 C 管理台 + B 上传/质量报告/修复 API（B 摄入流水线 v1 已就绪 #9 检测器，C 管理台待做）。
+- **场景 #9 文档管理台**：B 已完成上传、质量报告、原件/修复件预览和修复 API；当前仅余 C 管理台前端接入。
 
 
 ## D2（9/30）· A 完成 ✅ —— 跨源多跳评测体系 + 两类路由/生成修复（五类型全通）
@@ -183,4 +183,56 @@ A 侧 W4 四日交付：
 | D3 | 类型⑤多轮续查 + 挂接分级评测 + L1 | cs-011 多轮；run_levels 挂 cross_source；**L1 全绿（4 family 100%）** |
 | D4 | L2 首次全量 + 收尾 | 见上；README 刷新；B/C 交接清单 |
 
-**遗留（B/C 主责）**：见 [W4_handoff.md](./W4_handoff.md)。最高优先：#9 文档管理台闭环（唯一不可演示场景）、#7 坏文档目录重建。
+**遗留（B/C 主责）**：见 [W4_handoff.md](./W4_handoff.md)。B 已完成修复 API 与坏文档目录重建；场景 #9 当前仅余 C 前端管理台接入。
+
+## D5（10/1）· B 完成 ✅ —— 文档修复与管理 API 闭环
+
+### 本次交付
+
+- 新增文档上传、质量报告、修复触发以及原件/修复件预览接口；
+- 原始 PDF 永不覆盖，上传文件与修复副本分别保存在运行时目录；
+- 旋转页面通过重新渲染消除 rotation metadata；
+- 低清晰度扫描件使用强对比度与反锐化增强，但不宣称恢复已丢失信息；
+- 原始清晰度低于 `0.35` 的扫描件显式选择 MinerU Standard tier，
+  普通扫描件保留 Basic 快速路径；
+- OCR 文本执行繁体转简体后进入冻结的 DocIR，并继续生成 ChunkIR；
+- 平面原生 PDF 通过标题信号恢复文档标题与 H1 层级；
+- OCR 结果统一标记 `usable_with_review`，同时返回
+  `requires_human_review=true` 和能力边界，不声称完全修复。
+
+### API
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| POST | `/api/docs/upload` | 校验、保存并评估 PDF |
+| GET | `/api/docs/{doc_id}/quality` | 返回原件与修复件质量/复杂度报告 |
+| POST | `/api/docs/{doc_id}/repair` | 生成修复副本并按需执行 OCR、简繁转换与切片 |
+| GET | `/api/docs/{doc_id}/pdf?version=original|repaired` | 安全预览原件或修复件 |
+
+### 真实 GPU 验收
+
+测试资产：`bad_blurred_traditional.pdf`。
+
+| 指标 | 结果 |
+|---|---|
+| 路径 | upload → strong enhancement → MinerU Standard GPU → DocIR → ChunkIR |
+| 清晰度 | `0.0254 → 0.3309` |
+| OCR 事实命中 | `4/5` |
+| 平均逐行相似度 | `0.980` |
+| IR 产物 | `7 blocks / 1 chunk` |
+| API 恢复状态 | `usable_with_review` |
+| 原件保护 | 原始上传内容保持不变，修复副本独立保存 |
+| 全量回归 | `179 passed`，0 failure |
+
+Standard tier 使用 MinerU 4.0.7 的 VLM 路径。RTX 5090 上禁用当前版本
+FlashInfer 的 top-k/top-p sampler，保留 FlashAttention，并使用 PyTorch sampler。
+该设置通过 `VLLM_USE_FLASHINFER_SAMPLER=0` 注入运行环境。
+
+### 能力边界
+
+- OCR 仍可能出现少数字符错误，例如本次样本中的“发票→营票”“归档→归注”；
+- 系统不使用无依据的固定替换伪造正确文本，而是要求人工复核；
+- Standard tier 首次启动包含模型加载、编译和 CUDA Graph 预热，耗时高于后续推理；
+- 当前学校服务器存在单张物理 GPU 的 NVML 异常，相关 vLLM 环境兼容处理仅属
+  服务器部署措施，不进入项目业务代码；
+- 场景 #9 的后端闭环已经完成，完整前端演示仍依赖 C 的文档管理台接入。

@@ -42,14 +42,14 @@ class RepairResult:
 
 
 def _enhance_image(image: Image.Image) -> Image.Image:
-    """Conservative scan enhancement; does not invent missing content."""
+    """Strong scan enhancement; never described as content restoration."""
     grayscale = ImageOps.grayscale(image)
     contrasted = ImageOps.autocontrast(grayscale, cutoff=1)
     sharpened = contrasted.filter(
         ImageFilter.UnsharpMask(
-            radius=1.6,
-            percent=180,
-            threshold=3,
+            radius=2.2,
+            percent=260,
+            threshold=2,
         )
     )
     return sharpened.convert("RGB")
