@@ -96,6 +96,10 @@ class Settings(BaseSettings):
     rerank_candidate_k: int = Field(default=20, ge=1, le=200)
     rerank_max_length: int = Field(default=512, ge=32, le=8192)
 
+    # ---- RAG faithfulness self-check (W5 B) ----
+    rag_factcheck_enabled: bool = False
+    rag_factcheck_max_rounds: int = Field(default=2, ge=1, le=2)
+
     # ---- agent kernel ----
     session_persist: bool = True   # sessions & turns to PG (best-effort)
 

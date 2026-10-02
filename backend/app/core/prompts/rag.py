@@ -13,6 +13,54 @@ RAG_GENERATE_STATIC = """\
 4. 回答使用中文，简洁直接（2~5 句），不要复述全部片段。"""
 
 
+RAG_FACTCHECK_STATIC = """\
+你是企业知识库答案忠实度审核器。你只能根据给定的【知识库片段】审核答案。
+
+审核规则：
+1. 将答案拆分为事实性陈述，逐句判断是否被片段直接支持。
+2. 引用编号必须对应给定片段，引用存在不代表陈述一定有依据。
+3. 禁止使用片段之外的常识、推测或补充信息。
+4. 若所有事实性陈述均有依据，faithful 为 true，revised_answer 保持原答案。
+5. 若存在无依据、引用错误或夸大的陈述，faithful 为 false，并给出删除或收敛后的 revised_answer。
+6. revised_answer 不得添加新事实，并保留仍然有效的 [编号] 引用。
+7. 只输出一个 JSON 对象，不要输出 Markdown 或额外解释。
+
+JSON 格式：
+{
+  "faithful": true,
+  "unsupported_sentences": [],
+  "revised_answer": "审核后的完整答案"
+}"""
+
+
+def build_factcheck_messages(
+    question: str,
+    answer: str,
+    chunks: list[dict],
+) -> list[dict]:
+    """Build the static-prefix faithfulness audit prompt."""
+    ctx_lines = []
+    for chunk in chunks:
+        ctx_lines.append(
+            f"[{chunk['idx']}] 《{chunk['doc']}》 "
+            f"第{chunk['page']}页 {chunk['breadcrumb']}\n"
+            f"{chunk['text']}"
+        )
+
+    context = "\n\n".join(ctx_lines) if ctx_lines else "（无检索结果）"
+    return [
+        {"role": "system", "content": RAG_FACTCHECK_STATIC},
+        {
+            "role": "user",
+            "content": (
+                f"【知识库片段】\n{context}\n\n"
+                f"【用户问题】\n{question}\n\n"
+                f"【待审核答案】\n{answer}"
+            ),
+        },
+    ]
+
+
 def build_rag_messages(question: str, chunks: list[dict]) -> list[dict]:
     """chunks: [{idx, doc, page, breadcrumb, text}] — semi-static context,
     dynamic question last."""
