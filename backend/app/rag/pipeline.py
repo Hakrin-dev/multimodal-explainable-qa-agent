@@ -29,6 +29,7 @@ from ..ingestion.quality import assess_quality
 from ..ingestion.structure import recover_flat_headings
 from .embedding import EmbeddingService, get_embedding_service
 from .factcheck import check_answer
+from .query_rewrite import rewrite_query
 from .retriever import ChunkHit, HybridRetriever
 from .store import KBStore
 
@@ -44,6 +45,8 @@ class RAGResult:
     status: str = "ok"  # ok | no_context | error
     trace: dict[str, Any] = field(default_factory=dict)
     latency_ms: int = 0
+    retrieval_query: str = ""
+    query_rewrite: dict[str, Any] = field(default_factory=dict)
 
 
 def ingest_document(
@@ -116,13 +119,33 @@ class RAGPipeline:
     # ------------------------------------------------------------------ api
 
     def run(self, question: str, trace: TraceCollector | None = None,
-            top_k: int = 6, parent=None) -> RAGResult:
+            top_k: int = 6, parent=None, history: list[dict] | None = None,
+            doc_filter: str | None = None) -> RAGResult:
         """parent: kernel's tool_call node. When given, this pipeline's steps
         nest under it directly (no double rag_search wrapping)."""
         trace = trace or TraceCollector(question=question)
         t0 = time.monotonic()
         result = RAGResult(question=question)
         self.ensure_loaded()
+
+        # Retrieval optimization is separate from agent coreference rewriting.
+        if self.llm.settings.rag_query_rewrite_enabled:
+            with trace.span("rag_query_rewrite", NodeType.STEP, parent=parent) as node:
+                rewrite, calls = rewrite_query(self.llm, question, history)
+                for call in calls:
+                    with trace.span("llm", NodeType.LLM_CALL, parent=node) as child:
+                        trace.finish(child, detail={
+                            "purpose": "rag.query_rewrite", "model": call.model,
+                            "cost_rmb": call.cost_rmb,
+                            "tokens": {"prompt": call.usage.prompt_tokens,
+                                       "completion": call.usage.completion_tokens},
+                        }, latency_ms=call.latency_ms)
+                trace.finish(node, detail=rewrite.to_dict(),
+                             status=NodeStatus.DEGRADED if rewrite.degraded else NodeStatus.OK)
+        else:
+            rewrite, _ = rewrite_query(self.llm, question, history)
+        result.retrieval_query = rewrite.retrieval_query
+        result.query_rewrite = rewrite.to_dict()
 
         # ① retrieve — own tool_call span only when standalone (no double wrap)
         node = None
@@ -133,7 +156,10 @@ class RAGPipeline:
             cm = nullcontext(parent)
         with cm as n:
             node = n
-            hits: list[ChunkHit] = self.retriever.search(question, top_k=top_k)
+            hits: list[ChunkHit] = self.retriever.search(
+                rewrite.retrieval_query, top_k=top_k, doc_filter=doc_filter,
+                dense_query=rewrite.hyde_document or None,
+            )
             result.citations = [h.citation() for h in hits]
             result.hits = [
                 {

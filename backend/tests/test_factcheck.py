@@ -289,7 +289,7 @@ def test_pipeline_factcheck_trace_and_rewrite(tmp_path):
             }
 
     class FakeRetriever:
-        def search(self, question, top_k=6):
+        def search(self, question, top_k=6, doc_filter=None, dense_query=None):
             return [FakeHit()]
 
     pipeline = object.__new__(RAGPipeline)

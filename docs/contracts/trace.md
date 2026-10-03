@@ -43,6 +43,17 @@ turn (root: question)
 | `citations[]` | rag_search | `{doc, doc_id, page, breadcrumb, snippet, score}` ——已定稿，实现见 `rag/retriever.py::ChunkHit.citation()`，前端可直接渲染 |
 | `slots` / `missing_slots[]` / `options{}` | clarify | 槽位状态 |
 | `cost_rmb` / `model` / `tokens{}` | llm_call | 用量记账（与 SQLite 账本冗余，便于单轮成本归因） |
+| `original_query` / `retrieval_query` / `changed` / `attempted` / `hyde_enabled` / `degraded` / `reason` | rag_query_rewrite | 可选检索改写 step；失败为 degraded 并回退原查询；与 agent rewrite 节点独立 |
+| `hyde_length` / `hyde_preview` | rag_query_rewrite | 假设文档字符数与最多 160 字符摘要，不记录全文，不进入 citations |
+
+W5 B-D4：只有启用 `RAG_QUERY_REWRITE_ENABLED` 才新增 `rag_query_rewrite`
+step，位置为检索之前，Agent 调用时嵌套于工具节点。成功返回的模型响应
+（包括 JSON 校验失败的响应）挂 `llm_call` 子节点，purpose 为
+`rag.query_rewrite`，记录 model、cost_rmb、tokens 和调用延迟；调用抛异常时
+保留 step 的降级原因，不伪造调用用量。关闭时无新增节点或模型调用，
+`RAGResult.query_rewrite` 及 `/api/rag` 可选响应字段仍记录 attempted=false、
+reason=disabled。HyDE 仅影响 Dense embedding，BM25/reranker 使用
+retrieval_query；生成和 factcheck 使用 Pipeline 输入问题与真实 chunk。
 
 ### 3.1 RAG Citation 字段类型
 
@@ -130,6 +141,7 @@ Ingestion IR、数据库迁移、Citation 契约、测试和 C 端渲染，不�
 | 0.1+B | 2026-09-22 | B（sxy）完成 RAG Citation 评审；六字段实现与测试一致，明确字段类型和页级定位边界 | 已评审 |
 | 0.1+C | 2026-09-23 | C 按运行时代码完成前端契约评审；修正实际 payload，提出 `turn_id` 与 Trace 拉取端点两项冻结条件 | 已评审 |
 | **0.2** | **2026-09-26** | **冻结**：两项阻塞项已闭环（`turn.start` 携带 `turn_id` 已实现并有测试守护；`GET /api/trace/{turn_id}` 已实现含 404 语义）；事件顺序按实测更新；嵌套 Trace 树（tool_call 下挂流水线子树）为真实行为 | **✅ FROZEN（A/B/C 三方签字）** |
+| 0.2+B-D4 | 2026-10-03 | 新增可选 rag_query_rewrite step/detail 和模型用量子节点；六字段 Citation 与现有字段语义不变 | 已登记 |
 
 > 冻结后变更规则：字段改名/删除须三方向意；新增可选字段由提出方在变更记录登记即可。
 > C 的非阻塞建议（error.code/recoverable、类型图标映射）进入 W2 待办，不阻塞本版。

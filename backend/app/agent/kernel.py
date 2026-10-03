@@ -150,7 +150,7 @@ class AgentKernel:
             # reflect the actual route: this turn runs the HYBRID path
             ir = IntentResult(intent="HYBRID", confidence=ir.confidence,
                               raw={"source": "multidoc_intercept"})
-            result = self._hybrid(trace, emit, effective_question)
+            result = self._hybrid(trace, emit, effective_question, history)
         elif ir.intent == "CHAT":
             result = self._chat(trace, emit, effective_question, history)
         elif ir.intent == "DB_QUERY":
@@ -158,7 +158,7 @@ class AgentKernel:
         elif ir.intent == "DOC_QUERY":
             result = self._tool_turn(trace, emit, effective_question, "rag_search", history)
         elif ir.intent == "HYBRID":
-            result = self._hybrid(trace, emit, effective_question)
+            result = self._hybrid(trace, emit, effective_question, history)
         else:  # unknown — honest failure
             result = TurnResult(question=question, status="error",
                                 answer="未能识别该请求的意图。")
@@ -247,7 +247,7 @@ class AgentKernel:
                           data={k: v for k, v in tr.data.items() if k != "summary"},
                           citations=citations)
 
-    def _hybrid(self, trace, emit, question) -> TurnResult:
+    def _hybrid(self, trace, emit, question, history=None) -> TurnResult:
         """DAG execution (v1.2): topological waves — independent sub-tasks run
         concurrently (ThreadPoolExecutor), dependents wait on {tN.result}."""
         with trace.span("plan", NodeType.PLAN, input=question) as node:
@@ -286,7 +286,7 @@ class AgentKernel:
             spec = self.registry.get(task["tool"])
             label = f"subtask_{order[task['id']]}:{task['tool']}"
             with trace.span(label, NodeType.TOOL_CALL, input=q) as node:
-                tr = spec.handler(question=q, trace=trace, parent=node)
+                tr = spec.handler(question=q, trace=trace, parent=node, history=history)
                 trace.finish(node,
                              status=NodeStatus.OK if tr.ok else NodeStatus.DEGRADED,
                              output=None,
@@ -417,4 +417,3 @@ _DOC_WORDS = re.compile(r"手册|制度|SOP|文档|规定|流程|报告|方案|�
 
 def _is_multidoc_compare(q: str) -> bool:
     return bool(_COMPARE_Q.search(q) and _DOC_WORDS.search(q))
-

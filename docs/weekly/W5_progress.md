@@ -164,3 +164,47 @@
   `kb_formula`；公式自动登记能力已由 B-D2 的真实 DeepSeek 门禁独立验证；
 - 数据库备份、评测报告、日志、模型和 `.env` 均保存在 Git 工作区之外；
 - 语料为比赛演示用的受控业务文档，不应解释为真实公司的法律或财务制度。
+
+## B-D4（10/3）· 查询改写 ✅
+
+### 交付内容
+
+- 新增并冻结 `rag.query_rewrite` Prompt 家族，不修改任何已有冻结 Prompt；
+- `agent.rewrite` 继续负责指代消解与自包含问题，检索改写只优化进入 RAG 的问题；
+- 一次有界调用返回严格 JSON，保留实体、条件、时间和比较关系；
+- history 默认取最近 6 条，配置范围 0–20，单条送入模型最多 500 字符；
+- `/api/rag` 新增可选 history（最多 20 条，每条最多 2000 字符，仅 user/assistant），
+  HTTP 422 边界测试覆盖非法输入；
+- Agent 单工具与 HYBRID 子任务均传递 history，API/工具层传递 doc_filter；
+- 修复 doc_filter 在全库候选截取后才过滤的问题，避免指定文档被候选上限遗漏；
+- 默认 `RAG_QUERY_REWRITE_ENABLED=0`、`RAG_HYDE_ENABLED=0`，不增加默认模型调用；
+- HyDE 仅用于 Dense embedding；BM25/reranker 使用 retrieval_query，
+  generation/factcheck 继续使用输入问题和真实 chunk，假设文档不进入引用；
+- 非法 JSON、缺字段、空查询、类型错误、超长输出及 LLM 异常均回退原查询，
+  清空 HyDE 并标记 degraded，不中断 RAG；
+- `RAGResult`、API 和工具结果提供 retrieval_query/query_rewrite 审计元数据；
+- 启用时 Trace 新增 rag_query_rewrite step 和调用用量子节点，
+  记录改写前后查询、状态、原因及 HyDE 长度/160 字符摘要；关闭时保持原节点顺序。
+
+### 验收结果
+
+| 验收项 | 结果 |
+|---|---:|
+| 新增查询改写专项用例 | 43/43 |
+| 查询改写 + RAG + factcheck + API 安全专项 | 61 passed, 3 warnings |
+| 后端全量回归 | 251 passed, 6 warnings |
+| 指定文件 py_compile | 通过（含 Agent Kernel） |
+| 本次付费 API 调用 | 0 |
+
+测试仅使用 `LLM_PROVIDER=mock`，全量回归使用本地 CPU embedding，
+关闭 reranker、公式抽取、factcheck 与全局查询改写；新功能启用行为由
+专项测试的独立 mock 配置验证。无跳过项；warnings 为既有依赖弃用和
+test_connection 返回非 None 的提示。历史 B-D1/B-D2/B-D3 测试数字保持不变。
+
+### 能力边界
+
+- mock 门禁验证解析、参数传递、检索通道隔离、失败回退与 Trace 契约，
+  未验证真实模型的检索质量提升；真实模型验收需另行授权；
+- HyDE 依赖查询改写开关，单独启用 HyDE 不会触发模型调用；
+- 空 HyDE 回退为 retrieval_query 的 Dense embedding；
+- `.env`、密钥、模型、报告和数据库产物不进入变更；尚未 commit 或 push。

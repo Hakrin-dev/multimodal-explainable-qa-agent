@@ -40,10 +40,11 @@ Qwen 隐式上下文缓存同理）。三层结构保证最大公共前缀稳定
 | 8 | `nl2sql.link_rerank` | `prompts/nl2sql.py::LINK_RERANK_STATIC` | nl2sql.link_rerank | ✅ 冻结（W3 注册：Schema Linking LLM 精排表筛选，response_json 输出不可解析时优雅降级回召回结果） |
 | 9 | `rag.factcheck` | `prompts/rag.py::RAG_FACTCHECK_STATIC` | rag.factcheck | ✅ 冻结（W5 注册：逐句引用支撑校验，最多两轮收敛重写，失败时优雅降级保留答案） |
 | 10 | `rag.ingest` | `prompts/ingestion.py::FORMULA_EXTRACT_STATIC` | rag.ingest | ✅ 冻结（W5 注册：摄入期从候选块抽取 FormulaIR，严格 JSON 输出并执行表达式与参数校验） |
+| 11 | `rag.query_rewrite` | `prompts/rag.py::RAG_QUERY_REWRITE_STATIC` | rag.query_rewrite | ✅ 冻结（W5 B-D4：检索优化、受限历史融合、可选 HyDE；一次调用，严格 JSON，失败回退原查询） |
 
 **新家族注册协议**（B/C 新增 Prompt 时遵守）：静态层文本放 `core/prompts/` 或对应模块顶部常量；
 在注册表追加一行；purpose 命名 `<域>.<动作>`；首次合入即视为冻结（此后走追加规则）。
-B 待注册：`rag.query_rewrite`（注意与 agent.rewrite 职责区分：前者为检索优化、后者为多轮自包含化）；`rag.factcheck` 与 `rag.ingest` 已于 W5 注册；C 无（前端不写 Prompt）。
+B 的 `rag.query_rewrite`、`rag.factcheck` 与 `rag.ingest` 均已于 W5 注册；C 无（前端不写 Prompt）。`agent.rewrite` 负责路由前的多轮自包含化；`rag.query_rewrite` 仅优化已可理解问题的检索表达，历史不作为知识来源。
 
 ### 3.x 历史候选（已被 v1.0 取代，过程记录）
 
@@ -94,3 +95,4 @@ B 待注册：`rag.query_rewrite`（注意与 agent.rewrite 职责区分：前�
 | 1.2 | 2026-09-24 | W3：① 新家族 `nl2sql.link_rerank` 注册（#8，静态层首合即冻结）；② **负结果记录**：曾试验向 `nl2sql.generate` 追加"计数用 COUNT(*)/主键"规则（Rule 7/8 实验）——与 track 表业务注释（W1 name-dedup 约定：曲目数量按曲名去重）直接冲突，导致 st-004/mt-008 回归失败，**已完整回退**，静态层文本保持 v1.0 零改动，PROMPT_TEMPLATE_VERSION 维持 v0.4-w2-d3；③ 顺手修正 eval 数据 bug：mt-021 参考SQL `COUNT(*)` → `COUNT(DISTINCT t.name)`（对齐 W1 约定，见 cases notes） | ✅ 已登记 |
 | 1.3 | 2026-10-02 | W5：新增并冻结 `rag.factcheck` 家族；逐句核验答案与引用片段的支撑关系，发现无依据陈述时最多两轮收敛重写；JSON 解析或 LLM 调用失败时保留当前答案并标记 degraded；不修改已有 Prompt 家族文本，因此不使已有家族缓存失效 | ✅ 已登记 |
 | 1.4 | 2026-10-03 | W5：新增并冻结 `rag.ingest` 家族；摄入期从候选原文块抽取 FormulaIR，并执行表达式、参数和来源校验；不修改已有 Prompt 家族文本 | ✅ 已登记 |
+| 1.5 | 2026-10-03 | W5 B-D4：新增并冻结 `rag.query_rewrite` 家族；动态问题、history 和 HyDE 开关仅放 user 消息；已有静态文本零改动，模板版本保持 v0.4-w2-d3（沿用 1.3/1.4 新家族登记规则） | ✅ 已登记 |

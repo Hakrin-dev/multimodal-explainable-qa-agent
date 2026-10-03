@@ -90,11 +90,14 @@ def _tool_nl2sql(question: str, trace: TraceCollector,
     })
 
 
-def _tool_rag(question: str, trace: TraceCollector, parent=None, **_: Any) -> ToolResult:
+def _tool_rag(question: str, trace: TraceCollector, parent=None,
+              history: list[dict] | None = None, doc_filter: str | None = None,
+              **_: Any) -> ToolResult:
     from ..rag.pipeline import RAGPipeline
 
     try:
-        r = RAGPipeline().run(question, trace=trace, parent=parent)
+        r = RAGPipeline().run(question, trace=trace, parent=parent,
+                              history=history, doc_filter=doc_filter)
     except FileNotFoundError as e:
         # clean state: embedding model not downloaded — degrade honestly
         if parent is not None:
@@ -109,10 +112,13 @@ def _tool_rag(question: str, trace: TraceCollector, parent=None, **_: Any) -> To
                              detail={"degraded": True})
         return ToolResult(ok=False, data={}, degraded_reason="知识库未就绪（嵌入模型未部署）")
     if r.status == "no_context":
-        return ToolResult(ok=False, data={"answer": r.answer},
+        return ToolResult(ok=False, data={"answer": r.answer,
+                                        "retrieval_query": r.retrieval_query,
+                                        "query_rewrite": r.query_rewrite},
                           degraded_reason="知识库中未找到相关内容")
     return ToolResult(ok=True, data={
         "answer": r.answer, "citations": r.citations,
+        "retrieval_query": r.retrieval_query, "query_rewrite": r.query_rewrite,
     })
 
 
