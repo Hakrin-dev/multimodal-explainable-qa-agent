@@ -22,7 +22,7 @@ CASES = BACKEND / "eval" / "cases"
 DEFAULTS = {
     "nl2sql": [CASES / "nl2sql_single_table.jsonl", CASES / "nl2sql_multi_table.jsonl", CASES / "nl2sql_robustness.jsonl"],
     "rag": [CASES / "rag_single_doc.jsonl"],
-    "multiturn": [CASES / "multiturn_scripts.jsonl"],
+    "multiturn": [CASES / "multiturn_scripts.jsonl", CASES / "multiturn_scripts_w3.jsonl"],
     "cross_source": [CASES / "cross_source.jsonl"],
     "clarify": [CASES / "clarify_questions.jsonl"],
 }
@@ -50,7 +50,7 @@ def _command(family: str, level: str) -> list[str]:
     if family == "nl2sql":
         cmd += ["--cases", *map(str, DEFAULTS[family])]
     else:
-        cmd += ["--cases", str(DEFAULTS[family][0])]
+        cmd += ["--cases", *map(str, DEFAULTS[family])]
     if level == "L0":
         cmd += ["--only-ids", _ids(family, level)]
     return cmd

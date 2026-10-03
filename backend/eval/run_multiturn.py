@@ -57,14 +57,16 @@ def check_turn(result, expect: dict) -> tuple[bool, list[str]]:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--cases", default=str(Path(__file__).parent / "cases/multiturn_scripts.jsonl"))
+    ap.add_argument("--cases", nargs="+", default=[str(Path(__file__).parent / "cases/multiturn_scripts.jsonl")])
     ap.add_argument("--only-ids", default="", help="comma-separated script id filter (for level runner)")
     args = ap.parse_args()
 
     s = get_settings()
     only = {x.strip() for x in args.only_ids.split(",") if x.strip()}
-    scripts = [json.loads(l) for l in Path(args.cases).read_text(encoding="utf-8").splitlines()
-               if l.strip() and (not only or json.loads(l)["id"] in only)]
+    scripts = []
+    for case_path in args.cases:
+        scripts.extend(json.loads(l) for l in Path(case_path).read_text(encoding="utf-8").splitlines()
+                       if l.strip() and (not only or json.loads(l)["id"] in only))
     print(f"provider={s.llm_provider} model={s.active_model} scripts={len(scripts)}\n")
 
     kernel = AgentKernel()
