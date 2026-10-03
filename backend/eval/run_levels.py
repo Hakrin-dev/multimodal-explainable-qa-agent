@@ -20,10 +20,11 @@ from pathlib import Path
 BACKEND = Path(__file__).resolve().parents[1]
 CASES = BACKEND / "eval" / "cases"
 DEFAULTS = {
-    "nl2sql": [CASES / "nl2sql_single_table.jsonl", CASES / "nl2sql_multi_table.jsonl"],
+    "nl2sql": [CASES / "nl2sql_single_table.jsonl", CASES / "nl2sql_multi_table.jsonl", CASES / "nl2sql_robustness.jsonl"],
     "rag": [CASES / "rag_single_doc.jsonl"],
     "multiturn": [CASES / "multiturn_scripts.jsonl"],
     "cross_source": [CASES / "cross_source.jsonl"],
+    "clarify": [CASES / "clarify_questions.jsonl"],
 }
 
 
@@ -35,12 +36,16 @@ def _read_cases(paths: list[Path]) -> list[dict]:
 
 
 def _ids(family: str, level: str) -> str:
+    if family == "nl2sql" and level == "L0":
+        # Keep the smoke gate representative: single-table, JOIN, and robust variants.
+        rows = _read_cases([DEFAULTS[family][0]])[:3] + _read_cases([DEFAULTS[family][1]])[:2]
+        return ",".join(row["id"] for row in rows)
     rows = _read_cases(DEFAULTS[family])
     return ",".join(row["id"] for row in (rows[:5] if level == "L0" else rows))
 
 
 def _command(family: str, level: str) -> list[str]:
-    script = BACKEND / "eval" / {"nl2sql": "run_nl2sql.py", "rag": "run_rag.py", "multiturn": "run_multiturn.py", "cross_source": "run_cross_source.py"}[family]
+    script = BACKEND / "eval" / {"nl2sql": "run_nl2sql.py", "rag": "run_rag.py", "multiturn": "run_multiturn.py", "cross_source": "run_cross_source.py", "clarify": "run_clarify.py"}[family]
     cmd = [sys.executable, str(script)]
     if family == "nl2sql":
         cmd += ["--cases", *map(str, DEFAULTS[family])]

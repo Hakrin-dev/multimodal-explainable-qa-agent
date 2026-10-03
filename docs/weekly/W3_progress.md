@@ -63,6 +63,8 @@
 | C：前端联调收尾（12s 超时修复）+ DAG 可视化 + 文档管理台 | W2→W3 | ✅ 联调/DAG 已收尾；管理台顺延 W4 | W4 演示 8/10 场景已具备；文档管理台仍依赖 B 的上传/质量报告/修复 API |
 | C：分级跑分脚本 L0/L1（eval 契约 C 主责部分） | W3 | ✅ | `eval/run_levels.py` 统一调度 NL2SQL/RAG/多轮；L0 每类 5 用例、L1 全量、L2 主备模型×重复；结果落 `var/eval/levels_*.json` |
 | C：技术文档骨架（设计报告 + 技术实现说明书） | W3 | ✅ | `docs/design/design_report.md`、`technical_implementation.md` 已建立，纳入架构、契约、评测、成本与验收清单 |
+| C：鲁棒性变体用例（30 条） | W3 | ✅ | `eval/cases/nl2sql_robustness.jsonl`；每条带 `baseline_id`/`variant`，L1/L2 自动纳入，L0 覆盖单表+多表 smoke |
+| C：澄清触发用例（30 条） | W3 | ✅ | `eval/cases/clarify_questions.jsonl` + `eval/run_clarify.py`；检查 `status/intent/missing_slots`，并接入 L0/L1/L2 |
 
 > 建议周五复盘会（本周按日历已是 W1 尾/提前量充足）逐项确认 B/C 排期；A 侧 W3 交付已 100% 完成，W4 可提前介入跨源多跳与澄清基础版。
 
