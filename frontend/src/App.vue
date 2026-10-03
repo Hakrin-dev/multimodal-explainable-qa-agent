@@ -22,6 +22,7 @@ const activeTrace = ref<TraceNode[]>([])
 const feedEl = ref<HTMLElement>()
 const sessionId = ref(localStorage.getItem('mqa.session-id') || crypto.randomUUID())
 const aborter = ref<AbortController>()
+const stopRequested = ref(false)
 const messages = ref<ChatMessageModel[]>([])
 
 const sessionLabel = computed(() => sessionId.value.slice(0, 8))
@@ -81,6 +82,7 @@ async function send(value = question.value) {
   const assistant = reactive<ChatMessageModel>({ id: `a-${stamp}`, role: 'assistant', text: '', pending: true, traceNodes: [] })
   messages.value.push(user, assistant)
   sending.value = true
+  stopRequested.value = false
   aborter.value = new AbortController()
   scrollToBottom()
   try {
@@ -89,9 +91,9 @@ async function send(value = question.value) {
   } catch (error) {
     assistant.pending = false
     assistant.error = error instanceof DOMException && error.name === 'AbortError'
-      ? '连接后端超时，请确认服务已启动后重试'
+      ? stopRequested.value ? '已停止生成' : '首个响应等待超时，请确认后端已启动后重试'
       : error instanceof Error ? error.message : '连接失败，请确认后端已启动'
-    backendOnline.value = false
+    if (!stopRequested.value) backendOnline.value = false
   } finally {
     assistant.pending = false
     sending.value = false
@@ -100,7 +102,14 @@ async function send(value = question.value) {
   }
 }
 
+function stopSending() {
+  if (!sending.value) return
+  stopRequested.value = true
+  aborter.value?.abort()
+}
+
 function newSession() {
+  stopRequested.value = true
   aborter.value?.abort()
   sessionId.value = crypto.randomUUID()
   localStorage.setItem('mqa.session-id', sessionId.value)
@@ -161,9 +170,10 @@ function handleKeydown(event: KeyboardEvent) {
                   :disabled="sending"
                   @keydown="handleKeydown"
                 />
-                <n-button circle type="primary" :loading="sending" :disabled="!question.trim() && !sending" aria-label="发送" @click="send()">↑</n-button>
+                <n-button v-if="sending" circle type="error" aria-label="停止生成" title="停止生成" @click="stopSending">■</n-button>
+                <n-button v-else circle type="primary" :disabled="!question.trim()" aria-label="发送" @click="send()">↑</n-button>
               </div>
-              <div class="composer-meta"><span>Enter 发送 · Shift + Enter 换行</span><span>会话 {{ sessionLabel }}</span></div>
+              <div class="composer-meta"><span>{{ sending ? '正在生成，可点击停止' : 'Enter 发送 · Shift + Enter 换行' }}</span><span>会话 {{ sessionLabel }}</span></div>
             </footer>
           </section>
 

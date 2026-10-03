@@ -96,6 +96,7 @@ C 前端联调收尾（12s 超时修复）——均无提交，已顺延进 W3 �
 ### C 增量（2026-09-29）· 前端联调收尾 ✅
 
 - `frontend/src/api/chat.ts` 将原先的 12 秒总请求超时改为**首个 SSE 事件超时**：12 秒内收不到任何事件才中止；收到 `turn.start`、`trace.node` 或其他事件后取消计时，HYBRID/复杂 DB_QUERY 允许继续完成；用户传入的 `AbortSignal` 仍可手动停止。
+- `frontend/src/App.vue` 在生成期间将发送按钮切换为“停止生成”，主动中止时保留后端在线状态并显示“已停止生成”，与首事件超时提示明确区分。
 - `frontend/src/api/chat.test.ts` 新增慢轮次回归测试：首事件后额外保持流 60 秒仍不触发 abort。
 - 验收：前端测试 **4/4**；`vue-tsc` 类型检查与 Vite 生产构建通过。构建仅保留 ECharts/X6 按需 chunk 体积提示，不影响产物。
 - 对接 D4 实时 SSE：`turn.start` 已携带 `turn_id`，Trace/PDF 端点已在 A 的提交中落地；C 前端现有 DAG/引用组件可直接消费。
