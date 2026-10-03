@@ -16,12 +16,14 @@ from typing import Any
 
 import numpy as np
 
+from ..core.config import get_settings
 from ..core.llm import LLMService, get_llm_service
 from ..core.prompts import rag as prompts
 from ..core.tracing import NodeStatus, NodeType, TraceCollector
 from ..ingestion import chunker, pdf_ingest
 from ..ingestion.complexity import assess_pdf
 from ..ingestion.parsers import mineru as mineru_parser
+from ..ingestion.formula_extract import extract_formulas
 from ..ingestion.ir import DocIR
 from ..ingestion.quality import assess_quality
 from ..ingestion.structure import recover_flat_headings
@@ -48,6 +50,7 @@ def ingest_document(
     path: str,
     store: KBStore | None = None,
     embedding: EmbeddingService | None = None,
+    llm: LLMService | None = None,
     force: bool = False,
 ) -> tuple[DocIR, int]:
     """Assess quality/complexity → route → parse → chunk → embed → store."""
@@ -68,6 +71,20 @@ def ingest_document(
     chunker.chunk_doc(doc)
     if not doc.chunks:
         raise ValueError("PDF produced no chunks; existing index was left untouched")
+
+    settings = (
+        llm.settings
+        if llm is not None and hasattr(llm, "settings")
+        else get_settings()
+    )
+    if settings.formula_extract_enabled:
+        extraction_llm = llm or get_llm_service()
+        extract_formulas(
+            doc,
+            llm=extraction_llm,
+            max_blocks=settings.formula_extract_max_blocks,
+            max_formulas=settings.formula_extract_max_formulas,
+        )
 
     embedding = embedding or get_embedding_service()
     store = store or KBStore(dim=embedding.dim)

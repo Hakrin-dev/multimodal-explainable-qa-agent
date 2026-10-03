@@ -100,6 +100,11 @@ class Settings(BaseSettings):
     rag_factcheck_enabled: bool = False
     rag_factcheck_max_rounds: int = Field(default=2, ge=1, le=2)
 
+    # ---- ingestion formula extraction (W5 B, disabled by default) ----
+    formula_extract_enabled: bool = False
+    formula_extract_max_blocks: int = Field(default=40, ge=1, le=200)
+    formula_extract_max_formulas: int = Field(default=20, ge=1, le=100)
+
     # ---- agent kernel ----
     session_persist: bool = True   # sessions & turns to PG (best-effort)
 
