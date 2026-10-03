@@ -73,31 +73,26 @@ Ingestion IR、数据库迁移、Citation 契约、测试和 C 端渲染，不�
 
 | event | data | 时机 |
 |---|---|---|
-| `turn.start` | `{question, session_id, resumed_clarify}` | 开始处理本轮请求 |
+| `turn.start` | `{turn_id, question, session_id, resumed_clarify}` | 开始处理本轮请求；`turn_id` 用于断线后的 Trace 回放 |
 | `trace.node` | `TraceNode`（flat 形态，含 `id`/`parent_id`） | 每个节点完成（含 status/error） |
 | `answer.delta` | `{"text": "增量文本"}` | 最终答案流式生成中 |
 | `answer.done` | 完整 `TurnResult`：`{question, answer, intent, status, data, citations, clarify, cost_rmb, latency_ms, trace}` | 答案完成；这是前端最终渲染锚点 |
 | `clarify.request` | `{question, missing_slots[], options{}}` | 需要澄清，前端展示选项按钮；`options` 允许为空 |
 | `turn.end` | `{latency_ms, cost_rmb, status}` | 本轮结束 |
-| `error` | `{message, node_id?}` | 不可恢复错误 |
+| `error` | `{message, code, recoverable, node_id?}` | 错误事件；`code` 稳定、`recoverable` 表示是否可重试 |
 
 约束：
 - `trace.node` 的 `parent_id` 允许引用本轮根节点；根节点本身不一定以事件推送，前端需在 `answer.done.trace` 到达后补齐完整树；
 - 事件顺序固定为 `turn.start` → `trace.node`/`clarify.request` → `answer.delta` → `answer.done` → `turn.end`；
-- 当前实现将完整处理结束后缓存的事件一次性写入响应，`answer.delta` 也是整段答案；逐 token 真流式属于 W2 联调项；
-- 断线恢复依赖 4.1，但 `turn.start` 尚不携带 `turn_id`、4.1 端点也尚未实现，当前前端只能提示重试；冻结 v0.2 前需由 A 补齐；
+- 当前实现由 worker 线程实时转发事件；CHAT/fuse 的 `answer.delta` 可按增量文本推送，`answer.done` 仍是最终一致性锚点；
+- 断线恢复依赖 4.1：前端先用 `turn_id` 调用 `GET /api/trace/{turn_id}` 回放完整树；找不到的 turn 返回 404，处理中的 turn 由调用方重试；
 - 所有事件 data 均为单行 JSON（换行转义）。
 
 ### 4.2.1 C 端评审结论（2026-09-23）
 
 7 类事件足以覆盖对话、结构化结果、引用、澄清和错误态；`TraceNode` 的 `type + label + parent_id + status + latency_ms + detail` 足以完成时间线与 X6 DAG，不需要新增层级字段，层级可由父子关系计算。
 
-冻结前需完成两项阻塞修订：
-
-1. `turn.start` 必须增加 `turn_id`，使断线发生在 `answer.done` 前时仍能恢复；建议同时保留 `session_id` 与 `resumed_clarify`。
-2. 实现 `GET /api/trace/{turn_id}`，并明确找不到、处理中、已完成三种状态码/响应。前端在此之前不承诺断线自动恢复。
-
-非阻塞建议：`error` 增加稳定的 `code` 和 `recoverable`；`trace.node` 保持当前节点类型与 label 的职责分离，图标按 `type`、文案按 `label` 渲染。
+冻结验收：`turn.start.turn_id`、`GET /api/trace/{turn_id}`、稳定的 `error.code/recoverable` 均已实现并由后端测试守护；`trace.node` 保持 `type` 与 `label` 职责分离，前端图标按 `type`、文案按 `label` 渲染。
 
 ### 4.3 持久化
 
