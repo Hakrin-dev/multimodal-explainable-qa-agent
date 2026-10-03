@@ -44,11 +44,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--cases",
-        default=str(
-            Path(__file__).parent
-            / "cases"
-            / "rag_single_doc.jsonl"
-        ),
+        nargs="+",
+        default=[str(Path(__file__).parent / "cases" / "rag_single_doc.jsonl")],
     )
     parser.add_argument("--top-k", type=int, default=6)
     parser.add_argument(
@@ -66,15 +63,13 @@ def main() -> None:
     }
 
     cases = []
-    for line in Path(args.cases).read_text(
-        encoding="utf-8"
-    ).splitlines():
-        if not line.strip():
-            continue
-
-        case = json.loads(line)
-        if not only or case["id"] in only:
-            cases.append(case)
+    for case_path in args.cases:
+        for line in Path(case_path).read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            case = json.loads(line)
+            if not only or case["id"] in only:
+                cases.append(case)
 
     print(
         f"provider={settings.llm_provider} "

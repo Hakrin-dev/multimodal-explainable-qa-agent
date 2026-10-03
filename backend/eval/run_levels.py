@@ -21,7 +21,7 @@ BACKEND = Path(__file__).resolve().parents[1]
 CASES = BACKEND / "eval" / "cases"
 DEFAULTS = {
     "nl2sql": [CASES / "nl2sql_single_table.jsonl", CASES / "nl2sql_multi_table.jsonl", CASES / "nl2sql_robustness.jsonl"],
-    "rag": [CASES / "rag_single_doc.jsonl"],
+    "rag": [CASES / "rag_single_doc.jsonl", CASES / "rag_single_doc_w3.jsonl"],
     "multiturn": [CASES / "multiturn_scripts.jsonl", CASES / "multiturn_scripts_w3.jsonl"],
     "cross_source": [CASES / "cross_source.jsonl"],
     "clarify": [CASES / "clarify_questions.jsonl"],

@@ -1,0 +1,12 @@
+{"id":"rag-009","category":"rag_single_doc","question":"普通客户工单的第一次响应时限是多少？","expected_facts":["24"],"baseline_id":"rag-001","notes":"W3 paraphrase of rag-001"}
+{"id":"rag-010","category":"rag_single_doc","question":"哪些话属于客服服务禁语？","expected_facts":["这不归我管","你自己看说明"],"baseline_id":"rag-002","notes":"W3 paraphrase of rag-002"}
+{"id":"rag-011","category":"rag_single_doc","question":"工作满十年的员工年假有几天？","expected_facts":["20"],"baseline_id":"rag-003","notes":"W3 paraphrase of rag-003"}
+{"id":"rag-012","category":"rag_single_doc","question":"音频质量异常的商品多久内能免费换货？","expected_facts":["7"],"baseline_id":"rag-004","notes":"W3 paraphrase of rag-004"}
+{"id":"rag-013","category":"rag_single_doc","question":"销售人员每月提成比例和销售目标分别是多少？","expected_facts":["3%","2%","10"],"baseline_id":"rag-005","notes":"W3 paraphrase of rag-005"}
+{"id":"rag-014","category":"rag_single_doc","question":"Jane Peacock 的销售经验最看重什么？","expected_facts":["复购"],"baseline_id":"rag-006","notes":"W3 paraphrase of rag-006"}
+{"id":"rag-015","category":"rag_single_doc","question":"黑胶库存降到多少件会报警？","expected_facts":["120","库存预警"],"baseline_id":"rag-007","notes":"W3 paraphrase of rag-007"}
+{"id":"rag-016","category":"rag_single_doc","question":"数字专辑退款要在几个工作日内审核？","expected_facts":["2","退款复核"],"baseline_id":"rag-008","notes":"W3 paraphrase of rag-008"}
+{"id":"rag-017","category":"rag_single_doc","question":"普通客户提交工单后多久必须得到首次回复？","expected_facts":["24"],"baseline_id":"rag-001","notes":"W3 paraphrase of rag-001"}
+{"id":"rag-018","category":"rag_single_doc","question":"客服不能对客户说哪些常见的话？","expected_facts":["这不归我管","你自己看说明"],"baseline_id":"rag-002","notes":"W3 paraphrase of rag-002"}
+{"id":"rag-019","category":"rag_single_doc","question":"员工入职十周年对应的年假天数是多少？","expected_facts":["20"],"baseline_id":"rag-003","notes":"W3 paraphrase of rag-003"}
+{"id":"rag-020","category":"rag_single_doc","question":"购买音频产品后发现质量问题，多少天内可以免费更换？","expected_facts":["7"],"baseline_id":"rag-004","notes":"W3 paraphrase of rag-004"}
