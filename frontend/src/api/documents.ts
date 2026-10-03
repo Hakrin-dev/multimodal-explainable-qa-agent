@@ -1,6 +1,6 @@
 export interface ManagedDocument {
   doc_id: string
-  name: string
+  name?: string
   file?: string
   size?: number
   pdf_url?: string

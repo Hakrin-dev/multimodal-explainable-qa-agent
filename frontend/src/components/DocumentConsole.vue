@@ -28,7 +28,11 @@ async function upload(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
   uploading.value = true; error.value = ''
-  try { await uploadDocument(file); await refresh() } catch (e) { error.value = e instanceof Error ? e.message : '上传失败' }
+  try {
+    const uploaded = await uploadDocument(file)
+    await refresh()
+    await inspect(uploaded)
+  } catch (e) { error.value = e instanceof Error ? e.message : '上传失败' }
   finally { uploading.value = false; if (fileInput.value) fileInput.value.value = '' }
 }
 
@@ -58,7 +62,7 @@ onMounted(refresh)
       <div class="doc-list">
         <div class="doc-list__meta"><span>{{ loading ? '正在加载…' : `${documents.length} 份文档` }}</span><n-button text size="small" @click="refresh">刷新</n-button></div>
         <button v-for="doc in documents" :key="doc.doc_id" class="doc-item" :class="{ selected: selected === doc.doc_id }" @click="inspect(doc)">
-          <span class="doc-item__icon">PDF</span><span><strong>{{ doc.name }}</strong><small>{{ doc.doc_id }} · {{ doc.size ? `${Math.round(doc.size / 1024)} KB` : '已入库' }}</small></span><span>›</span>
+          <span class="doc-item__icon">PDF</span><span><strong>{{ doc.name || doc.doc_id }}</strong><small>{{ doc.doc_id }} · {{ doc.source === 'upload' ? '已上传' : '知识库' }} · {{ doc.size ? `${Math.round(doc.size / 1024)} KB` : '已入库' }}</small></span><span>›</span>
         </button>
         <p v-if="!loading && !documents.length" class="doc-empty">暂无文档，请上传 PDF。</p>
       </div>
