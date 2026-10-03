@@ -67,6 +67,7 @@
 | C：澄清触发用例（30 条） | W3 | ✅ | `eval/cases/clarify_questions.jsonl` + `eval/run_clarify.py`；检查 `status/intent/missing_slots`，并接入 L0/L1/L2 |
 | C：多轮脚本扩充（4→8） | W3 | ✅ | `multiturn_scripts.jsonl` 新增 mts-005~008，每个脚本 5 轮，覆盖追问、话题切换、澄清恢复和 HYBRID |
 | C：RAG 单文档用例扩充（8→20） | W3 | ✅ | 新增 `eval/cases/rag_single_doc_w3.jsonl` 12 条可追溯改写，RAG runner 与 L1/L2 支持多文件输入 |
+| C：RAG 多文档用例（15 条） | W3 | ✅ | 新增 `eval/cases/rag_multi_doc_w3.jsonl`，每条要求跨员工手册、SOP、产品运营文档命中多个事实，接入 RAG 分级跑分 |
 
 > 建议周五复盘会（本周按日历已是 W1 尾/提前量充足）逐项确认 B/C 排期；A 侧 W3 交付已 100% 完成，W4 可提前介入跨源多跳与澄清基础版。
 

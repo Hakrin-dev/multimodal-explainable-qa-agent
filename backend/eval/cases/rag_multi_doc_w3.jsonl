@@ -1,0 +1,15 @@
+{"id":"rag-md-001","category":"rag_multi_doc","question":"员工入职十年年假有多少天？普通客户工单首次响应时限是多少？","expected_facts":["20","24"],"notes":"W3 cross-document retrieval"}
+{"id":"rag-md-002","category":"rag_multi_doc","question":"销售岗月度提成比例和销售目标分别是多少？","expected_facts":["3%","2%","10"],"notes":"W3 cross-document retrieval"}
+{"id":"rag-md-003","category":"rag_multi_doc","question":"黑胶库存低于多少件预警？数字专辑退款几天内复核？","expected_facts":["120","2","库存预警","退款复核"],"notes":"W3 cross-document retrieval"}
+{"id":"rag-md-004","category":"rag_multi_doc","question":"音频质量问题换货期限和普通工单首次响应时限分别是多少？","expected_facts":["7","24"],"notes":"W3 cross-document retrieval"}
+{"id":"rag-md-005","category":"rag_multi_doc","question":"员工销售提成规则中有哪两个百分比？年假十年档是多少天？","expected_facts":["3%","2%","20"],"notes":"W3 cross-document retrieval"}
+{"id":"rag-md-006","category":"rag_multi_doc","question":"客服服务禁语有哪些？数字专辑退款复核期限是多少？","expected_facts":["这不归我管","你自己看说明","2"],"notes":"W3 cross-document retrieval"}
+{"id":"rag-md-007","category":"rag_multi_doc","question":"Jane Peacock 的方法论强调什么？黑胶库存预警阈值是多少？","expected_facts":["复购","120"],"notes":"W3 cross-document retrieval"}
+{"id":"rag-md-008","category":"rag_multi_doc","question":"普通工单响应时限与音频产品换货期限相差多少天？","expected_facts":["24","7"],"notes":"W3 cross-document retrieval"}
+{"id":"rag-md-009","category":"rag_multi_doc","question":"销售目标是多少？库存预警数量是多少？","expected_facts":["10","120"],"notes":"W3 cross-document retrieval"}
+{"id":"rag-md-010","category":"rag_multi_doc","question":"十年年假天数和数字专辑退款复核工作日分别是多少？","expected_facts":["20","2"],"notes":"W3 cross-document retrieval"}
+{"id":"rag-md-011","category":"rag_multi_doc","question":"客服禁语和销售提成规则分别是什么？","expected_facts":["这不归我管","你自己看说明","3%","2%"],"notes":"W3 cross-document retrieval"}
+{"id":"rag-md-012","category":"rag_multi_doc","question":"Jane Peacock 的销售方法论与销售岗目标分别是什么？","expected_facts":["复购","10"],"notes":"W3 cross-document retrieval"}
+{"id":"rag-md-013","category":"rag_multi_doc","question":"音频质量换货期限、黑胶预警阈值和退款复核期限分别是多少？","expected_facts":["7","120","2"],"notes":"W3 cross-document retrieval"}
+{"id":"rag-md-014","category":"rag_multi_doc","question":"年假十年档天数与客服工单首次响应时限分别是多少？","expected_facts":["20","24"],"notes":"W3 cross-document retrieval"}
+{"id":"rag-md-015","category":"rag_multi_doc","question":"销售提成比例、普通工单响应时限和黑胶预警阈值分别是多少？","expected_facts":["3%","2%","24","120"],"notes":"W3 cross-document retrieval"}

@@ -28,7 +28,7 @@ backend/
     ingestion/     摄入流水线：IR 中间表示 · PyMuPDF 解析(字号标题识别) · 面包屑切片
     agent/ …       W2 起填充（编排内核）
   scripts/         Chinook 导入 · 术语库抽取 · 知识库 PDF 生成 · 文档摄入 · 双引擎冒烟
-  eval/            用例集(单表 20 + 多表 11 + 鲁棒性 30 + 澄清 30 + RAG 20 + 多轮 8 + 跨源 11 + 选型 10) · 分级 runner(L0/L1/L2) · 跨源 runner · 用例预检
+  eval/            用例集(单表 20 + 多表 11 + 鲁棒性 30 + 澄清 30 + RAG 单文档 20 + 多文档 15 + 多轮 8 + 跨源 11 + 选型 10) · 分级 runner(L0/L1/L2) · 跨源 runner · 用例预检
   tests/           158 个测试（单测 + 集成）
 frontend/          Vue 3 前端：对话流 · 表格/图表 · 引用 · 澄清 · Trace 时间线/DAG
 deploy/            docker-compose · quick_start.sh
