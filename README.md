@@ -28,8 +28,8 @@ backend/
     ingestion/     摄入流水线：IR 中间表示 · PyMuPDF 解析(字号标题识别) · 面包屑切片
     agent/ …       W2 起填充（编排内核）
   scripts/         Chinook 导入 · 术语库抽取 · 知识库 PDF 生成 · 文档摄入 · 双引擎冒烟
-  eval/            用例集(单表 10 + 多表 20 + 选型 10 + RAG 6) · 双 runner · 用例预检
-  tests/           41 个测试（单测 + 集成）
+  eval/            用例集(单表 20 + 多表 11 + RAG 8 + 多轮 4 + 跨源 11 + 选型 10) · 分级 runner(L0/L1/L2) · 跨源 runner · 用例预检
+  tests/           158 个测试（单测 + 集成）
 frontend/          Vue 3 前端：对话流 · 表格/图表 · 引用 · 澄清 · Trace 时间线/DAG
 deploy/            docker-compose · quick_start.sh
 data/              db_raw(Chinook SQLite) · db_schema(生成 DDL/术语种子) · docs_raw / docs_parsed / eval_cases
@@ -41,7 +41,7 @@ docs/
 
 ```bash
 cd backend && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest tests/ -q                  # 27 passed（集成用例需先启动 DB）
+.venv/bin/python -m pytest tests/ -q                  # 158 passed（集成用例需先启动 DB）
 .venv/bin/python scripts/smoke_nl2sql.py              # mock 驱动 10 用例全流程
 .venv/bin/python eval/model_selection.py              # D1 选型评测（需 API key）
 
@@ -55,7 +55,7 @@ pnpm test && pnpm build
 ## 里程碑
 
 W1 地基+选型+最小闭环 → W2 编排内核+缓存 → W3 中级任务主攻(#1/#2/#4/#5) → W4 跨源+澄清 → W5 打磨提交。
-当前状态见 [docs/weekly/W1_progress.md](./docs/weekly/W1_progress.md)。
+W4 收口状态见 [docs/weekly/W4_progress.md](./docs/weekly/W4_progress.md)；B/C 待办见 [W4_handoff.md](./docs/weekly/W4_handoff.md)。
 
 ### 分级评测（C 角色）
 
@@ -70,4 +70,7 @@ python eval/run_levels.py --level L2 --providers deepseek,qwen --repeats 3
 
 每次 family runner 的明细仍按原有格式写入 `backend/var/eval/`，调度清单写入
 `levels_<level>_<timestamp>.json`，便于周报和趋势脚本消费。`--provider`/`--providers`
-只通过环境变量切换模型，不修改评测代码。
+只通过环境变量切换模型，不修改评测代码（切换 provider 时会清空 `.env` 的 `LLM_MODEL`，让其回退到该 provider 默认模型）。
+
+评测 family：`nl2sql` / `rag` / `multiturn` / `cross_source`（跨源多跳，五类型 11 用例）。
+跨源单独跑：`python eval/run_cross_source.py [--only-ids cs-003,cs-011]`。

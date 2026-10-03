@@ -18,13 +18,15 @@ import numpy as np
 
 from ..core.llm import LLMService, get_llm_service
 from ..core.prompts import rag as prompts
-from ..core.tracing import NodeType, TraceCollector
+from ..core.tracing import NodeStatus, NodeType, TraceCollector
 from ..ingestion import chunker, pdf_ingest
 from ..ingestion.complexity import assess_pdf
 from ..ingestion.parsers import mineru as mineru_parser
 from ..ingestion.ir import DocIR
 from ..ingestion.quality import assess_quality
+from ..ingestion.structure import recover_flat_headings
 from .embedding import EmbeddingService, get_embedding_service
+from .factcheck import check_answer
 from .retriever import ChunkHit, HybridRetriever
 from .store import KBStore
 
@@ -33,8 +35,10 @@ from .store import KBStore
 class RAGResult:
     question: str
     answer: str = ""
+    initial_answer: str = ""
     citations: list[dict] = field(default_factory=list)
     hits: list[dict] = field(default_factory=list)   # debug: full hit info
+    faithfulness: dict[str, Any] = field(default_factory=dict)
     status: str = "ok"  # ok | no_context | error
     trace: dict[str, Any] = field(default_factory=dict)
     latency_ms: int = 0
@@ -52,6 +56,7 @@ def ingest_document(
 
     if assessment.parser == "pymupdf":
         doc = pdf_ingest.parse_pdf(path)
+        recover_flat_headings(doc)
     elif assessment.parser == "mineru":
         doc = mineru_parser.parse_pdf(path)
     else:
@@ -114,9 +119,20 @@ class RAGPipeline:
             hits: list[ChunkHit] = self.retriever.search(question, top_k=top_k)
             result.citations = [h.citation() for h in hits]
             result.hits = [
-                {"doc": h.chunk.doc_name, "page": h.chunk.page_start,
-                 "score": h.score, "vector": round(h.vector_score, 4),
-                 "text": h.chunk.text[:200]}
+                {
+                    "doc": h.chunk.doc_name,
+                    "page": h.chunk.page_start,
+                    "score": h.score,
+                    "vector": round(h.vector_score, 4),
+                    "bm25": round(h.bm25_score, 4),
+                    "rrf": round(h.rrf_score, 4),
+                    "rerank": (
+                        round(h.rerank_score, 4)
+                        if h.rerank_score is not None
+                        else None
+                    ),
+                    "text": h.chunk.text[:200],
+                }
                 for h in hits
             ]
             if parent is None:   # kernel finishes its own node later
@@ -151,9 +167,68 @@ class RAGPipeline:
                                "completion": resp.usage.completion_tokens},
                 })
             result.answer = resp.content.strip()
+            result.initial_answer = result.answer
             trace.finish(node, output=result.answer[:300])
 
-        # ③ 忠实度自检 — W3 (B)：逐句引用支撑校验，不支撑则收敛重写
+        # ③ faithfulness self-check: bounded convergence, graceful fallback
+        if self.llm.settings.rag_factcheck_enabled:
+            with trace.span(
+                "rag_factcheck",
+                NodeType.STEP,
+                parent=parent,
+                input={
+                    "max_rounds": self.llm.settings.rag_factcheck_max_rounds,
+                },
+            ) as node:
+                outcome, calls = check_answer(
+                    self.llm,
+                    question=question,
+                    answer=result.answer,
+                    chunks=chunks_payload,
+                    max_rounds=self.llm.settings.rag_factcheck_max_rounds,
+                )
+
+                result.answer = outcome.answer
+                result.faithfulness = outcome.to_dict()
+
+                for attempt, call in enumerate(calls, start=1):
+                    with trace.span(
+                        "llm",
+                        NodeType.LLM_CALL,
+                        parent=node,
+                        input={"attempt": attempt},
+                    ) as llm_node:
+                        trace.finish(
+                            llm_node,
+                            detail={
+                                "purpose": "rag.factcheck",
+                                "attempt": attempt,
+                                "model": call.model,
+                                "cost_rmb": call.cost_rmb,
+                                "tokens": {
+                                    "prompt": call.usage.prompt_tokens,
+                                    "completion": call.usage.completion_tokens,
+                                },
+                            },
+                            latency_ms=call.latency_ms,
+                        )
+
+                status = (
+                    NodeStatus.OK
+                    if outcome.faithful
+                    else NodeStatus.DEGRADED
+                )
+                trace.finish(
+                    node,
+                    output=(
+                        "faithful"
+                        if outcome.faithful
+                        else outcome.reason or "requires_review"
+                    ),
+                    status=status,
+                    detail=result.faithfulness,
+                )
+
 
         result.trace = trace.to_dict()
         result.latency_ms = int((time.monotonic() - t0) * 1000)

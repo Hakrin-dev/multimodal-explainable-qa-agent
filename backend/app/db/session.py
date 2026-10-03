@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from contextlib import contextmanager
 
 import psycopg
@@ -23,11 +24,30 @@ def _dsn() -> str:
 
 @contextmanager
 def get_conn(readonly: bool = True, autocommit: bool = True):
-    """Connection factory. NL2SQL executions must use readonly=True."""
-    with psycopg.connect(_dsn(), autocommit=autocommit) as conn:
+    """Connection factory. NL2SQL executions must use readonly=True.
+
+    Connection establishment is retried briefly: transient DNS / port-forward
+    hiccups (e.g. a container port-proxy flap under sustained load) must not
+    fail an entire eval case or turn. No-op on a healthy network.
+    """
+    conn = None
+    last: Exception | None = None
+    for attempt in range(5):
+        try:
+            conn = psycopg.connect(_dsn(), autocommit=autocommit)
+            break
+        except psycopg.OperationalError as exc:
+            last = exc
+            if attempt < 4:
+                time.sleep(2 * (attempt + 1))
+    if conn is None:
+        raise last if last else psycopg.OperationalError("db connect failed")
+    try:
         if readonly:
             conn.read_only = True
         yield conn
+    finally:
+        conn.close()
 
 
 def test_connection() -> bool:

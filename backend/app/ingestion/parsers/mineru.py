@@ -78,8 +78,7 @@ def _resolve_binary(explicit: str | None = None) -> str:
 
     raise MinerUUnavailableError(
         "mineru-kit was not found. Set MINERU_BIN to the MinerU 4.x "
-        "executable, for example "
-        "/home/sxy/.venvs/mqa-mineru/bin/mineru-kit"
+        "executable (e.g. /path/to/mqa-mineru-venv/bin/mineru-kit)."
     )
 
 

@@ -16,6 +16,7 @@ answer.delta / answer.done / clarify.request / turn.end / error.
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -127,6 +128,29 @@ class AgentKernel:
         # ② route (downstream gets the standalone question)
         if ir.needs_clarification:
             result = self._clarify(trace, emit, effective_question, ir)
+        elif _is_formula_question(effective_question) and ir.intent != "CHAT":
+            # W4-D1 formula intercept (#6): route to formula_eval single tool,
+            # bypassing HYBRID planner uncertainty; intent prompt stays frozen.
+            with trace.span("formula_intercept", NodeType.STEP,
+                            input=effective_question) as fnode:
+                trace.finish(fnode, output={"routed_to": "formula_eval"},
+                             detail={"reason": "keyword match, #6"})
+            emit("trace.node", _node_event(trace, fnode))
+            result = self._tool_turn(trace, emit, effective_question,
+                                      "formula_eval", history)
+        elif _is_multidoc_compare(effective_question) and ir.intent in ("DOC_QUERY", "DB_QUERY"):
+            # W4-D2 multi-doc compare intercept: a DOC_QUERY llm verdict on a
+            # compare question retrieves one blob by luck; force HYBRID so the
+            # planner issues per-document rag_search tasks and fuses them.
+            with trace.span("multidoc_intercept", NodeType.STEP,
+                            input=effective_question) as mnode:
+                trace.finish(mnode, output={"routed_to": "hybrid"},
+                             detail={"reason": "multi-doc compare keyword"})
+            emit("trace.node", _node_event(trace, mnode))
+            # reflect the actual route: this turn runs the HYBRID path
+            ir = IntentResult(intent="HYBRID", confidence=ir.confidence,
+                              raw={"source": "multidoc_intercept"})
+            result = self._hybrid(trace, emit, effective_question)
         elif ir.intent == "CHAT":
             result = self._chat(trace, emit, effective_question, history)
         elif ir.intent == "DB_QUERY":
@@ -377,3 +401,20 @@ def _clarify_question(ir: IntentResult) -> str:
         if isinstance(first, list) and first:
             q += "可选：" + " / ".join(str(x) for x in first[:5])
     return q
+
+# W4-D1 formula keyword intercept (#6) — routes compute questions to the
+# formula_eval tool without touching the frozen intent prompt.
+_FORMULA_Q = re.compile(r"提成.*公式|公式.*计算|公式.*多少|按.*公式.*提成|提成.*计算.*多少")
+
+
+def _is_formula_question(q: str) -> bool:
+    return bool(_FORMULA_Q.search(q))
+
+# W4-D2 multi-doc compare intercept: compare wording + document nouns.
+_COMPARE_Q = re.compile(r"和|与|对比|分别|比较")
+_DOC_WORDS = re.compile(r"手册|制度|SOP|文档|规定|流程|报告|方案|协议|规范")
+
+
+def _is_multidoc_compare(q: str) -> bool:
+    return bool(_COMPARE_Q.search(q) and _DOC_WORDS.search(q))
+

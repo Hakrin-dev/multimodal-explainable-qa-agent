@@ -87,6 +87,19 @@ class Settings(BaseSettings):
     embedding_batch_size: int = Field(default=32, ge=1, le=1024)
     siliconflow_embedding_model: str = "BAAI/bge-m3"
 
+    # ---- RAG reranker (W3 B: RRF candidates -> cross-encoder -> top-k) ----
+    rerank_enabled: bool = False
+    rerank_provider: str = "local"
+    rerank_model_path: str = "models/bge-reranker-v2-m3"
+    rerank_device: str = "cpu"  # cpu | cuda | cuda:N
+    rerank_batch_size: int = Field(default=8, ge=1, le=128)
+    rerank_candidate_k: int = Field(default=20, ge=1, le=200)
+    rerank_max_length: int = Field(default=512, ge=32, le=8192)
+
+    # ---- RAG faithfulness self-check (W5 B) ----
+    rag_factcheck_enabled: bool = False
+    rag_factcheck_max_rounds: int = Field(default=2, ge=1, le=2)
+
     # ---- agent kernel ----
     session_persist: bool = True   # sessions & turns to PG (best-effort)
 

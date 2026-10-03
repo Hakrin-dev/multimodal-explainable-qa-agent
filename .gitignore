@@ -35,3 +35,7 @@ backend/var/
 Thumbs.db
 models/
 .workbuddy/
+
+# Runtime document-management files
+data/docs_upload/
+data/docs_repaired/

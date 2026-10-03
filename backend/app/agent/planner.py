@@ -93,7 +93,11 @@ def build_fuse_messages(question: str, sub_results: list[dict]) -> list[dict]:
     for i, sr in enumerate(sub_results, 1):
         parts.append(f"[子任务{i}] 工具={sr['tool']} 问题={sr['question']}\n"
                      f"结果：{json.dumps(sr['result'], ensure_ascii=False, default=str)[:1500]}")
+    user = "\n\n".join(parts) + f"\n\n【用户原始问题】\n{question}"
+    user += ("\n\n【生成要求】若上述子任务结果中已包含回答所需的依据，"
+             "请直接基于其作答，不要声称\"未找到/无法确认\"；"
+             "只有该部分确实缺失时才如实说明缺失。")
     return [
         {"role": "system", "content": FUSE_STATIC},
-        {"role": "user", "content": "\n\n".join(parts) + f"\n\n【用户原始问题】\n{question}"},
+        {"role": "user", "content": user},
     ]

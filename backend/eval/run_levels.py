@@ -14,6 +14,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -22,6 +23,7 @@ DEFAULTS = {
     "nl2sql": [CASES / "nl2sql_single_table.jsonl", CASES / "nl2sql_multi_table.jsonl"],
     "rag": [CASES / "rag_single_doc.jsonl"],
     "multiturn": [CASES / "multiturn_scripts.jsonl"],
+    "cross_source": [CASES / "cross_source.jsonl"],
 }
 
 
@@ -38,7 +40,7 @@ def _ids(family: str, level: str) -> str:
 
 
 def _command(family: str, level: str) -> list[str]:
-    script = BACKEND / "eval" / {"nl2sql": "run_nl2sql.py", "rag": "run_rag.py", "multiturn": "run_multiturn.py"}[family]
+    script = BACKEND / "eval" / {"nl2sql": "run_nl2sql.py", "rag": "run_rag.py", "multiturn": "run_multiturn.py", "cross_source": "run_cross_source.py"}[family]
     cmd = [sys.executable, str(script)]
     if family == "nl2sql":
         cmd += ["--cases", *map(str, DEFAULTS[family])]
@@ -70,10 +72,22 @@ def main() -> None:
                 env = os.environ.copy()
                 if provider:
                     env["LLM_PROVIDER"] = provider
+                    # clear any .env LLM_MODEL override so active_model falls
+                    # back to the provider default (e.g. qwen-plus), otherwise a
+                    # stale model name leaks across providers (404 model_not_found)
+                    env["LLM_MODEL"] = ""
                 print(f"\n=== {args.level} provider={provider or 'configured'} repeat={repeat} family={family} ===")
                 completed = subprocess.run(cmd, cwd=BACKEND, env=env, check=False)
+                attempts = 1
+                # infra retry: WSL2 docker-proxy can drop port 5433 under
+                # sustained mixed load; retry the family rather than abort L1.
+                while completed.returncode != 0 and attempts < 4:
+                    attempts += 1
+                    print(f"  [infra] family={family} rc={completed.returncode} — retry {attempts - 1}/3 after 15s")
+                    time.sleep(15)
+                    completed = subprocess.run(cmd, cwd=BACKEND, env=env, check=False)
                 manifest["runs"].append({"family": family, "provider": provider or "configured",
-                                         "repeat": repeat, "command": cmd, "returncode": completed.returncode})
+                                         "repeat": repeat, "command": cmd, "returncode": completed.returncode, "attempts": attempts})
     manifest["finished_at"] = dt.datetime.now().isoformat(timespec="seconds")
     out = BACKEND / "var" / "eval" / f"levels_{args.level.lower()}_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
