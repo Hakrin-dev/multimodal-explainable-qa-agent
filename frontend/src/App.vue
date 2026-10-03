@@ -2,6 +2,7 @@
 import { computed, defineAsyncComponent, nextTick, onMounted, reactive, ref } from 'vue'
 import { NButton, NConfigProvider, NInput, NMessageProvider, NTag, type GlobalThemeOverrides } from 'naive-ui'
 import ChatMessage from './components/ChatMessage.vue'
+import DocumentConsole from './components/DocumentConsole.vue'
 import { checkHealth, streamChat } from './api/chat'
 import type { ChatMessageModel, ClarifyPayload, SSEEvent, TraceNode, TraceTree, TurnResult } from './types'
 
@@ -24,6 +25,7 @@ const sessionId = ref(localStorage.getItem('mqa.session-id') || crypto.randomUUI
 const aborter = ref<AbortController>()
 const stopRequested = ref(false)
 const messages = ref<ChatMessageModel[]>([])
+const showDocuments = ref(false)
 
 const sessionLabel = computed(() => sessionId.value.slice(0, 8))
 
@@ -140,11 +142,13 @@ function handleKeydown(event: KeyboardEvent) {
             <n-tag round size="small" :type="backendOnline === true ? 'success' : backendOnline === false ? 'error' : 'default'">
               <span class="status-dot" />{{ backendOnline === true ? '服务在线' : backendOnline === false ? '服务离线' : '检测中' }}
             </n-tag>
+            <n-button quaternary size="small" @click="showDocuments = !showDocuments">▣ 文档管理</n+            </n-button>
             <n-button quaternary size="small" @click="newSession">＋ 新会话</n-button>
           </div>
         </header>
 
-        <main class="workspace">
+        <DocumentConsole v-if="showDocuments" @close="showDocuments = false" />
+        <main v-else class="workspace">
           <section class="conversation">
             <div ref="feedEl" class="feed">
               <div v-if="!messages.length" class="welcome">

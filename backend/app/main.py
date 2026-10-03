@@ -216,13 +216,22 @@ def list_docs() -> dict[str, Any]:
     """KB docs available for citation preview (front-end document picker)."""
     from pathlib import Path
     from .core.config import resolve_repo_path
-    docs_dir = resolve_repo_path("data/docs_raw")
-    if not docs_dir.is_dir():
-        return {"docs": []}
-    return {"docs": [
-        {"doc_id": p.stem, "name": p.stem, "file": p.name, "size": p.stat().st_size}
-        for p in sorted(docs_dir.glob("*.pdf"))
-    ]}
+    entries: dict[str, dict[str, Any]] = {}
+    # Keep the original knowledge base and managed uploads in one stable list
+    # so the C document console can refresh after POST /api/docs/upload.
+    for directory in ("data/docs_raw", "data/docs_upload"):
+        docs_dir = resolve_repo_path(directory)
+        if not docs_dir.is_dir():
+            continue
+        for path in docs_dir.glob("*.pdf"):
+            entries[path.stem] = {
+                "doc_id": path.stem,
+                "name": path.stem,
+                "file": path.name,
+                "size": path.stat().st_size,
+                "source": "upload" if directory.endswith("upload") else "knowledge_base",
+            }
+    return {"docs": [entries[key] for key in sorted(entries)]}
 
 
 @app.get("/api/docs/{doc_id}/pdf")

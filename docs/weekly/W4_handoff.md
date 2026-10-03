@@ -61,3 +61,13 @@
 | 环境加固 | `app/db/session.get_conn` 连接重试（WSL2 docker-proxy 5433 间歇断） |
 
 > C 现在可直接接入 B 已完成的 `/api/docs/upload`、`/api/docs/{doc_id}/quality`、`/api/docs/{doc_id}/repair` 和`/api/docs/{doc_id}/pdf?version=...`。
+
+## C 更新（2026-10-03）· 文档管理台已接入
+
+- `frontend/src/api/documents.ts`：封装文档列表、上传、质量报告、修复和 PDF 预览接口。
+- `frontend/src/components/DocumentConsole.vue`：完成文档列表、质量 JSON 展示、原件/修复件预览、修复触发和上传 PDF。
+- `frontend/src/App.vue`：顶部新增“文档管理”入口，与对话工作台可切换。
+- 前端兼容验收：`vue-tsc` 通过，Vitest 4/4 通过；管理台直接消费 B 的现有 API，不改变 Trace/Citation 契约。
+- 兼容性修正：`GET /api/docs` 现在同时列出 `data/docs_raw` 与 `data/docs_upload`，上传后刷新管理台不会丢失新文档。
+
+场景 #9 的前后端闭环已完成；后续只需在真实部署环境补充截图和人工体验验收。
