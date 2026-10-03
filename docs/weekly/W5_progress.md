@@ -6,6 +6,7 @@
 
 - 文档管理台完成上传、质量报告、修复、原件/修复件预览闭环；上传后自动刷新并选中新文档。
 - 前端兼容测试 **9/9**（SSE 4 + 文档 API 5），`vue-tsc` 通过。
+- 后端安全边界回归新增 `backend/tests/test_api_security.py`，覆盖输入校验、Trace 分页上限和修复并发门禁。
 - Trace 契约正文已与 A 当前实现对齐：`turn_id`、实时 `answer.delta`、`error.code/recoverable` 和回放端点均有明确说明。
 
 ### 安全检查与修复
