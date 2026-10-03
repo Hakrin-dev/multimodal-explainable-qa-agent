@@ -1,0 +1,6 @@
+{"id":"rag-w5-001","category":"rag_corpus_w5","question":"A 级供应商的默认结算周期是多少天？","expected_doc_id":"supplier_agreement","expected_facts":["15","结算"],"notes":"W5 supplier table retrieval"}
+{"id":"rag-w5-002","category":"rag_corpus_w5","question":"春季音乐活动新增了多少注册客户，新客付费转化率是多少？","expected_doc_id":"marketing_campaign_review","expected_facts":["1340","8.8%"],"notes":"W5 marketing metrics retrieval"}
+{"id":"rag-w5-003","category":"rag_corpus_w5","question":"渠道服务费按照实收销售额的百分之多少计算？","expected_doc_id":"finance_policy","expected_facts":["1.5%"],"notes":"W5 finance formula retrieval"}
+{"id":"rag-w5-004","category":"rag_corpus_w5","question":"收到可信版权争议通知后，应在多久内暂停曲目销售？","expected_doc_id":"copyright_policy","expected_facts":["4","小时"],"notes":"W5 copyright policy retrieval"}
+{"id":"rag-w5-005","category":"rag_corpus_w5","question":"金卡会员最近十二个月的有效消费门槛是多少元？","expected_doc_id":"customer_membership","expected_facts":["1500"],"notes":"W5 membership table retrieval"}
+{"id":"rag-w5-006","category":"rag_corpus_w5","question":"重点歌单至少多长时间更新一次？","expected_doc_id":"playlist_curation","expected_facts":["14","天"],"notes":"W5 playlist operations retrieval"}

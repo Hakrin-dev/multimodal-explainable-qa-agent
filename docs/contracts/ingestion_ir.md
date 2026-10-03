@@ -139,7 +139,8 @@ raw file ──► 质量评估(#9) ──► 复杂度评分(#8) ──► 解�
 | MinerU 4.x Basic 扫描件解析 | ✅ Middle JSON v2 → DocIR；PaddleOCR 兜底仍待接入 | `parsers/mineru.py`；`rag.pipeline.ingest_document` |
 | 目录信号融合 + LLM 层级判定（#7 完整版） | ⬜ 决赛 | `pdf_ingest` 扩展 |
 | 公式登记（#6） | ✅ W5 自动化：候选块筛选 → LLM 抽取 → FormulaEngine 校验 → 与文档/切片同事务写入；默认关闭，失败不覆盖已有公式 | `ingestion/formula_extract.py`；`core/prompts/ingestion.py`；`formula/store.py`；`rag/store.py` |
-| 坏文档生成器（3 份，W2 演示用） | ✅ 三类资产完成；旋转扫描件已完成解析检索闭环，其余两类待增强 | `scripts/gen_bad_docs.py`；`tests/test_bad_docs.py` |
+| 坏文档生成器与修复闭环（3 份） | ✅ 旋转、模糊繁体和缺失层级三类资产均已覆盖；原件与修复件隔离保存 | `scripts/gen_bad_docs.py`；`tests/test_bad_docs.py`；`tests/test_doc_api.py` |
+| 正常知识库语料 | ✅ W5 扩展到 10 份 PDF、116 个 ChunkIR；新增 6 例 Top-1 严格检索 6/6 | `scripts/kb_doc_content.py`；`scripts/kb_doc_content_w5.py`；`tests/test_kb_corpus.py` |
 
 ## 变更记录
 
@@ -202,9 +203,9 @@ cd backend
 ```
 
 测试在临时目录生成正常、表格、长文档、扫描、混合、旋转、重叠图片、空白、加密、损坏
-PDF，并验证现有四份知识库 PDF。真实 PG 测试使用唯一测试文档 ID，结束后仅清理该 ID。
-MinerU 4.x Basic 适配已完成；三类坏文档中旋转扫描件已完成解析检索闭环。
-模糊繁体增强、缺失层级恢复、扫描件视觉方向检测和 PaddleOCR 兜底仍待后续交付。
+PDF，并验证当前十份正常知识库 PDF。真实 PG 测试使用唯一测试文档 ID，结束后仅清理该 ID。
+MinerU 4.x Basic 与 Standard GPU 路径均已完成适配；旋转扫描、模糊繁体和缺失层级三类坏文档均已完成修复、解析与切片闭环。
+PaddleOCR CPU 兜底与 MinerU 容器内服务化仍待后续交付。
 
 增量登记（2026-09-23，B 实现并完成回归验证）：新增可选 `meta.complexity_details`，
 实现已有 `meta.complexity`；所有冻结字段与语义保持不变。

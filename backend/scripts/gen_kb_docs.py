@@ -5,6 +5,7 @@ Usage: python scripts/gen_kb_docs.py [--out ../data/docs_raw]
 The generator is deterministic (same content -> same layout), so ingestion
 tests can rely on stable page/breadcrumb structure. The three deliberately
 broken W2 fixtures are generated separately by scripts/gen_bad_docs.py.
+"""
 
 from __future__ import annotations
 
@@ -12,12 +13,20 @@ import argparse
 import sys
 from pathlib import Path
 
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.platypus import (
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND))
@@ -40,6 +49,14 @@ def _styles() -> dict[str, ParagraphStyle]:
                              leading=17, spaceBefore=10, spaceAfter=6),
         "body": ParagraphStyle("body", fontName=FONT, fontSize=SIZE_BODY,
                                leading=16.5, firstLineIndent=21, spaceAfter=6),
+        "table_head": ParagraphStyle(
+            "table_head", fontName=FONT, fontSize=9.5,
+            leading=13, alignment=1,
+        ),
+        "table_cell": ParagraphStyle(
+            "table_cell", fontName=FONT, fontSize=9.0,
+            leading=13,
+        ),
     }
 
 
@@ -49,6 +66,40 @@ def render(doc: dict, out_path: Path) -> None:
     for level, heading in doc["sections"]:
         story.append(Paragraph(heading, styles[f"h{level}"]))
         story.append(Paragraph(doc["body"][heading], styles["body"]))
+
+        table_data = doc.get("tables", {}).get(heading)
+        if table_data:
+            width = 16.6 * cm / len(table_data[0])
+            rows = [
+                [
+                    Paragraph(
+                        str(value),
+                        styles[
+                            "table_head"
+                            if row_index == 0
+                            else "table_cell"
+                        ],
+                    )
+                    for value in row
+                ]
+                for row_index, row in enumerate(table_data)
+            ]
+            table = Table(
+                rows,
+                colWidths=[width] * len(table_data[0]),
+                repeatRows=1,
+                hAlign="LEFT",
+            )
+            table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#D9EAF7")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#708090")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]))
+            story.extend([table, Spacer(1, 8)])
     SimpleDocTemplate(
         str(out_path), pagesize=A4,
         leftMargin=2.2 * cm, rightMargin=2.2 * cm,
