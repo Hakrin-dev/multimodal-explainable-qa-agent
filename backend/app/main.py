@@ -5,9 +5,10 @@ W2 will add the agent orchestration endpoints (/api/chat SSE, /api/trace).
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
 from .core.config import get_settings
@@ -22,6 +23,10 @@ _DOC_ID_RE = re.compile(r"^[a-z0-9_-]+$", re.I)
 
 app = FastAPI(title="Multimodal Explainable QA Agent", version="0.1.0")
 
+# OCR/repair can invoke MinerU and GPU resources. Keep one repair in flight
+# per API process; callers receive 429 instead of creating an unbounded queue.
+_repair_gate = threading.BoundedSemaphore(1)
+
 
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
@@ -30,12 +35,13 @@ class QueryRequest(BaseModel):
 
 class RAGRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
-    doc_filter: str | None = None
+    doc_filter: str | None = Field(default=None, max_length=128, pattern=r"^[a-zA-Z0-9_-]+$")
 
 
 class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
-    session_id: str = "default"
+    session_id: str = Field(default="default", min_length=1, max_length=128,
+                            pattern=r"^[a-zA-Z0-9._:-]+$")
 
 
 class DocumentRepairRequest(BaseModel):
@@ -195,6 +201,8 @@ def repair_document(
     """Create a repaired copy and optionally run OCR normalization."""
     from .ingestion import documents
 
+    if not _repair_gate.acquire(blocking=False):
+        raise HTTPException(429, "another document repair is already running")
     try:
         return documents.repair_managed_document(
             doc_id,
@@ -209,6 +217,8 @@ def repair_document(
         raise HTTPException(400, str(exc)) from exc
     except documents.DocumentManagementError as exc:
         raise HTTPException(422, str(exc)) from exc
+    finally:
+        _repair_gate.release()
 
 
 @app.get("/api/docs")
@@ -272,7 +282,11 @@ def get_trace(turn_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/trace")
-def list_traces(session_id: str | None = None, limit: int = 20) -> dict[str, Any]:
+def list_traces(
+    session_id: str | None = Query(default=None, max_length=128,
+                                   pattern=r"^[a-zA-Z0-9._:-]+$"),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict[str, Any]:
     from .agent import persistence
     return {"turns": persistence.list_turns(session_id, limit)}
 
