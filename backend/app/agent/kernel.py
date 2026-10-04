@@ -104,6 +104,21 @@ class AgentKernel:
                                  "missing_slots": ir.missing_slots})
         emit("trace.node", _node_event(trace, node))
 
+        # ①'' standalone confirmation (W5 遗留项：多轮简短输入的过度澄清):
+        # the rewrite produced a standalone question but intent still said
+        # ambiguous — re-classify once WITHOUT history (context is already
+        # folded into the rewrite; history is the distraction source).
+        verdict_pre = self.slots.check(effective_question)
+        if (ir.needs_clarification and rw.changed and not verdict_pre.missing):
+            retry = self.classifier.classify(effective_question, None)
+            if not retry.needs_clarification:
+                ir = retry
+                with trace.span("intent_standalone_retry", NodeType.STEP,
+                                input=effective_question) as rnode:
+                    trace.finish(rnode, output={"intent": retry.intent},
+                                 detail={"reason": "standalone confirmation"})
+                emit("trace.node", _node_event(trace, rnode))
+
         # ①' slot matrix (§4.7, deterministic): pattern rules may override an
         # over-confident DB_QUERY into clarify, or enrich clarify options.
         # The matrix owns the CANONICAL slot vocabulary: free-form LLM labels

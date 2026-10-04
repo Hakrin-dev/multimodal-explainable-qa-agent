@@ -1,0 +1,50 @@
+{
+  "started_at": "2026-10-04T18:08:55",
+  "doc_scales": [
+    {
+      "chunks": 116,
+      "p50_ms": 4.5,
+      "p95_ms": 6.8,
+      "marker_recall": 3,
+      "marker_total": 0,
+      "scale": 10,
+      "ingest_s": null
+    },
+    {
+      "chunks": 300,
+      "p50_ms": 5.2,
+      "p95_ms": 7.1,
+      "marker_recall": 2,
+      "marker_total": 3,
+      "scale": 100,
+      "ingest_s": null
+    },
+    {
+      "chunks": 3000,
+      "p50_ms": 128.1,
+      "p95_ms": 143.7,
+      "marker_recall": 3,
+      "marker_total": 3,
+      "scale": 1000,
+      "ingest_s": null
+    }
+  ],
+  "table_scales": [
+    {
+      "tables": 12,
+      "link_p50_ms": 55.4,
+      "link_p95_ms": 64.5,
+      "recall_ok": 3,
+      "cards_chars": 2207,
+      "label": "chinook-11"
+    },
+    {
+      "tables": 72,
+      "link_p50_ms": 166.7,
+      "link_p95_ms": 193.0,
+      "recall_ok": 3,
+      "cards_chars": 7487,
+      "label": "synth-71"
+    }
+  ]
+}

@@ -14,8 +14,8 @@ from .session import get_conn
 
 # Chinook public schema only — project/system tables stay out of prompts.
 _SYSTEM_SCHEMAS = ("pg_catalog", "information_schema")
-_PROJECT_TABLES = {"biz_term", "kb_doc", "kb_chunk", "trace_turn", "trace_event",
-                   "app_session"}
+_PROJECT_TABLES = {"biz_term", "kb_doc", "kb_chunk", "kb_formula", "trace_turn",
+                   "trace_event", "app_session"}
 
 
 @dataclass

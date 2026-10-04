@@ -26,7 +26,10 @@ backend/
     nl2sql/        问数流水线：改写(术语链接) → 生成 → sqlglot 校验 → 只读执行 → 自修复 → 总结
     rag/           问答引擎：Embedding 抽象 · pgvector+BM25 存储 · RRF 混合检索 · 引用生成
     ingestion/     摄入流水线：IR 中间表示 · PyMuPDF 解析(字号标题识别) · 面包屑切片
-    agent/ …       W2 起填充（编排内核）
+    agent/         编排内核：意图路由 · 工具注册 · HYBRID DAG · 澄清/改写 · Trace 持久化
+    formula/       公式引擎：FormulaIR 登记 · LaTeX→SymPy · 三通道参数绑定 · 双通道校验
+    ingestion/     摄入：质量评估 #9 · 复杂度评分 #8 · MinerU/OCR 路由 · 修复工作流 · 公式抽取
+  eval/            分级评测（L0/L1/L2）: nl2sql(61) · rag(8+) · multiturn(12 脚本) · cross_source(11) · clarify(30)
   scripts/         Chinook 导入 · 术语库抽取 · 知识库 PDF 生成 · 文档摄入 · 双引擎冒烟
   eval/            用例集(单表 20 + 多表 11 + 鲁棒性 30 + 澄清 30 + RAG 单文档 20 + 多文档 15 + 多轮 8 + 跨源 11 + 选型 10) · 分级 runner(L0/L1/L2) · 跨源 runner · 用例预检
   tests/           158 个测试（单测 + 集成）
