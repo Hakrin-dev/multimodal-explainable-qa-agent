@@ -39,3 +39,4 @@ models/
 # Runtime document-management files
 data/docs_upload/
 data/docs_repaired/
+data/docs_bench/
