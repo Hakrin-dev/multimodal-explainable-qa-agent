@@ -75,6 +75,13 @@ def ingest_document(
     if not doc.chunks:
         raise ValueError("PDF produced no chunks; existing index was left untouched")
 
+    embedding = embedding or get_embedding_service()
+    store = store or KBStore(dim=embedding.dim)
+
+    if not force and store.doc_content_hash(doc.doc_id) == doc.content_hash():
+        if store.update_assessment(doc):
+            return doc, 0  # unchanged chunks; refresh metadata without re-embedding
+
     settings = (
         llm.settings
         if llm is not None and hasattr(llm, "settings")
@@ -88,14 +95,6 @@ def ingest_document(
             max_blocks=settings.formula_extract_max_blocks,
             max_formulas=settings.formula_extract_max_formulas,
         )
-
-    embedding = embedding or get_embedding_service()
-    store = store or KBStore(dim=embedding.dim)
-
-    if not force and store.doc_content_hash(doc.doc_id) == doc.content_hash():
-        if store.update_assessment(doc):
-            return doc, 0  # unchanged chunks; refresh metadata without re-embedding
-
     embeddings = embedding.embed([c.text for c in doc.chunks])
     store.upsert_doc(doc, chunk_embeddings=np.asarray(embeddings))
     return doc, len(doc.chunks)

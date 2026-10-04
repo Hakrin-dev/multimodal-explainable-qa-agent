@@ -237,3 +237,14 @@ def test_rejected_formula_must_not_replace_existing_rows() -> None:
     assert result.rejected
     assert result.replace_ready is False
 
+
+def test_empty_formula_response_must_not_replace_existing_rows() -> None:
+    llm = FakeLLM('{"formulas": []}')
+    doc = _doc("销售提成计算公式为销售额的 3%。")
+
+    result = extract_formulas(doc, llm=llm)
+
+    assert result.completed is True
+    assert result.extracted == 0
+    assert result.replace_ready is False
+    assert doc.meta["formula_extraction"]["replace_ready"] is False

@@ -290,3 +290,64 @@ def test_formula_extraction_defaults_are_safe() -> None:
     assert settings.formula_extract_max_blocks == 40
     assert settings.formula_extract_max_formulas == 20
 
+
+def test_unchanged_document_skips_paid_formula_extraction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.rag import pipeline
+
+    doc = DocIR(
+        doc_id="unchanged_formula_doc",
+        name="未变化文档",
+        source_path="mem://unchanged.pdf",
+        pages=1,
+        blocks=[
+            BlockIR(id="b1", page=1, type="paragraph",
+                    text="销售提成 = 销售额 × 3%。"),
+        ],
+    )
+
+    class _Assessment:
+        parser = "pymupdf"
+
+        @staticmethod
+        def metadata():
+            return {"complexity": 1}
+
+    class _Quality:
+        @staticmethod
+        def metadata():
+            return {"quality": {"score": 1.0}}
+
+    def fake_chunk(document):
+        document.chunks = [ChunkIR(
+            id="c1", doc_id=document.doc_id, block_ids=["b1"],
+            breadcrumb=[document.name], page_start=1, page_end=1,
+            text=document.blocks[0].text,
+        )]
+        return document.chunks
+
+    monkeypatch.setattr(pipeline, "assess_quality", lambda path: _Quality())
+    monkeypatch.setattr(pipeline, "assess_pdf", lambda path: _Assessment())
+    monkeypatch.setattr(pipeline.pdf_ingest, "parse_pdf", lambda path: doc)
+    monkeypatch.setattr(pipeline.chunker, "chunk_doc", fake_chunk)
+
+    class _UnchangedStore:
+        def doc_content_hash(self, doc_id):
+            return doc.content_hash()
+
+        def update_assessment(self, document):
+            return True
+
+        def upsert_doc(self, document, chunk_embeddings):
+            raise AssertionError("unchanged document must not be re-embedded")
+
+    llm = _FakeLLM()
+    result, new_chunks = pipeline.ingest_document(
+        "unchanged.pdf", store=_UnchangedStore(),
+        embedding=_FakeEmbedding(), llm=llm,
+    )
+
+    assert result is doc
+    assert new_chunks == 0
+    assert llm.calls == []

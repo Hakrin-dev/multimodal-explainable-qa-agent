@@ -30,8 +30,12 @@ class FormulaExtractionResult:
 
     @property
     def replace_ready(self) -> bool:
+        # An empty successful response is not proof that the document has no
+        # formulas. Keep existing registrations unless at least one validated
+        # formula was extracted.
         return (
             self.completed
+            and self.extracted > 0
             and not self.rejected
             and not self.error
         )
