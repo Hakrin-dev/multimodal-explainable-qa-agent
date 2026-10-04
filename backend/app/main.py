@@ -33,9 +33,15 @@ class QueryRequest(BaseModel):
     history: list[dict] | None = None
 
 
+class RAGHistoryMessage(BaseModel):
+    role: str = Field(pattern=r"^(user|assistant)$")
+    content: str = Field(max_length=2000)
+
+
 class RAGRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     doc_filter: str | None = Field(default=None, max_length=128, pattern=r"^[a-zA-Z0-9_-]+$")
+    history: list[RAGHistoryMessage] | None = Field(default=None, max_length=20)
 
 
 class ChatRequest(BaseModel):
@@ -90,10 +96,12 @@ def get_terms() -> dict[str, Any]:
 def rag_query(req: RAGRequest) -> dict[str, Any]:
     from .rag.pipeline import RAGPipeline
     pipeline = RAGPipeline()
-    r = pipeline.run(req.question)
+    r = pipeline.run(req.question, doc_filter=req.doc_filter,
+                     history=[m.model_dump() for m in req.history] if req.history is not None else None)
     return {
         "question": r.question, "answer": r.answer, "status": r.status,
         "citations": r.citations, "latency_ms": r.latency_ms, "trace": r.trace,
+        "retrieval_query": r.retrieval_query, "query_rewrite": r.query_rewrite,
     }
 
 

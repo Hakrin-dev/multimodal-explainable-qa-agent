@@ -23,17 +23,20 @@
 - 验收：BGE-M3 吞吐约 1318 texts/s；Top-20 rerank P50 约 12 ms；双模型同驻峰值约 4.37 GiB
 - ⚠ 换维度需 drop + `--force` 重摄入（store 已内置检测）；**A 侧术语库向量需同步重算**（W3 曾做过 1024→512 对齐，方向反过来）
 
-### 4. 忠实度自检（PLAN §4.3）
-- LLM 逐句校验答案是否有引用支撑，不支撑则收敛重写
-- 现状：引用生成已有，**自检未做**；直接关系 RAG 忠实度 10 分
+### 4. 忠实度自检（PLAN §4.3）—— ✅ 已完成
+- W5 B-D1 已完成逐句引用支撑校验，并在发现无依据陈述时执行最多两轮收敛重写；
+- JSON 解析或模型调用失败时优雅降级并保留当前答案，Trace 记录审核轮次、重写和降级状态；
+- 真实 DeepSeek 三类质量门禁通过，8 例 RAG 消融保持 retrieval/answer hit 均为 100%。
 
-### 5. 公式登记自动化（#6，决赛多公式）
-- 现状：A 已代建 `kb_formula` 表 + seed 1 公式（`scripts/seed_formulas.py`，employee_handbook-f1 提成公式）
-- **B 主责**：摄入期 LLM 从 blocks 抽 LaTeX→FormulaIR（参数 desc/source 标注准确）；A 的 `FormulaEngine` 直接消费
+### 5. 公式登记自动化（#6，决赛多公式）—— ✅ 已完成
+- W5 B-D2 已完成候选块筛选、LLM 结构化抽取、表达式与参数校验、FormulaEngine 双通道验证以及 `kb_formula` 原子替换；
+- 真实 DeepSeek 门禁从 `employee_handbook.pdf` 正确抽取销售提成公式，4 组数值验证全部通过；
+- 默认 `FORMULA_EXTRACT_ENABLED=0`，失败或部分拒绝不会覆盖已有有效公式。
 
-### 6. 知识库扩至 10 份（PLAN §6.1）
-- 现状：4 份正常（`data/docs_raw/`）+ 3 坏文档（`data/docs_bad/` 隔离）
-- 目标：10-15 份，与 Chinook 语义联动
+### 6. 知识库扩至 10 份（PLAN §6.1）—— ✅ 已完成
+- `data/docs_raw/` 已由 4 份扩展到 10 份正常 PDF，`data/docs_bad/` 的 3 份坏文档继续隔离；
+- 新增供应商、营销、财务、版权、会员和歌单运营 6 类文档，并与 Chinook 业务实体语义联动；
+- 10 份文档生成 116 个 ChunkIR；新增 6 例 Top-1 严格检索 6/6，全量 RAG retrieval 与 strict gate 均为 41/41。
 
 ## 三、C 侧评测 / 文档
 

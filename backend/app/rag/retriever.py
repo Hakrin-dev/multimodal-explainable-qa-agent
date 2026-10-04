@@ -119,11 +119,12 @@ class HybridRetriever:
         query: str,
         top_k: int = 6,
         doc_filter: str | None = None,
+        dense_query: str | None = None,
     ) -> list[ChunkHit]:
         if not self.chunks or self.matrix is None:
             return []
 
-        q = self.embedding.embed_query(query)
+        q = self.embedding.embed_query(dense_query or query)
         candidate_k = max(
             CANDIDATE_K,
             top_k,
@@ -133,16 +134,22 @@ class HybridRetriever:
         # Dense candidates (cosine; stored embeddings are normalized).
         vec_scores = (self.matrix @ q).tolist()
         vec_ranked = sorted(
-            range(len(self.chunks)),
+            (i for i, chunk in enumerate(self.chunks)
+             if not doc_filter or chunk.doc_id == doc_filter),
             key=lambda index: -vec_scores[index],
         )[:candidate_k]
 
         # Sparse candidates.
         bm25_ranked = (
-            self.bm25.search(query, top_k=candidate_k)
+            self.bm25.search(
+                query, top_k=len(self.chunks) if doc_filter else candidate_k,
+            )
             if self.bm25
             else []
         )
+        if doc_filter:
+            bm25_ranked = [(i, score) for i, score in bm25_ranked
+                           if self.chunks[i].doc_id == doc_filter][:candidate_k]
         bm25_scores = dict(bm25_ranked)
 
         # Reciprocal-rank fusion.

@@ -100,6 +100,16 @@ class Settings(BaseSettings):
     rag_factcheck_enabled: bool = False
     rag_factcheck_max_rounds: int = Field(default=2, ge=1, le=2)
 
+    # ---- retrieval query optimization (W5 B, opt-in only) ----
+    rag_query_rewrite_enabled: bool = False
+    rag_hyde_enabled: bool = False
+    rag_query_rewrite_history_limit: int = Field(default=6, ge=0, le=20)
+
+    # ---- ingestion formula extraction (W5 B, disabled by default) ----
+    formula_extract_enabled: bool = False
+    formula_extract_max_blocks: int = Field(default=40, ge=1, le=200)
+    formula_extract_max_formulas: int = Field(default=20, ge=1, le=100)
+
     # ---- agent kernel ----
     session_persist: bool = True   # sessions & turns to PG (best-effort)
 

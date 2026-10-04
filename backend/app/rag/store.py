@@ -97,50 +97,130 @@ class KBStore:
 
     # -- ingest -------------------------------------------------------------
 
-    def upsert_doc(self, doc: DocIR, chunk_embeddings: np.ndarray) -> None:
-        """Replace a doc's chunks atomically (idempotent re-ingest)."""
-        assert len(doc.chunks) == len(chunk_embeddings), \
-            f"{doc.doc_id}: {len(doc.chunks)} chunks vs {len(chunk_embeddings)} embeddings"
+    def upsert_doc(
+        self,
+        doc: DocIR,
+        chunk_embeddings: np.ndarray,
+    ) -> None:
+        """Atomically replace a document, chunks and validated formulas."""
+        assert len(doc.chunks) == len(chunk_embeddings), (
+            f"{doc.doc_id}: {len(doc.chunks)} chunks vs "
+            f"{len(chunk_embeddings)} embeddings"
+        )
+
+        formula_meta = doc.meta.get("formula_extraction")
+        formula_replace_ready = (
+            isinstance(formula_meta, dict)
+            and bool(formula_meta.get("replace_ready"))
+        )
+
+        if formula_replace_ready:
+            from ..formula import store as formula_store
+            formula_store.ensure_schema()
+
         with get_conn(readonly=False) as conn, conn.cursor() as cur:
             with conn.transaction():
-                cur.execute("DELETE FROM kb_doc WHERE doc_id = %s", (doc.doc_id,))
                 cur.execute(
-                    "INSERT INTO kb_doc (doc_id, name, source_path, pages, parser,"
-                    " content_hash, meta) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                    (doc.doc_id, doc.name, doc.source_path, doc.pages, doc.parser,
-                     doc.content_hash(), json.dumps(doc.meta, ensure_ascii=False)),
+                    "DELETE FROM kb_doc WHERE doc_id = %s",
+                    (doc.doc_id,),
                 )
-                for chunk, emb in zip(doc.chunks, chunk_embeddings):
+                cur.execute(
+                    "INSERT INTO kb_doc "
+                    "(doc_id, name, source_path, pages, parser, "
+                    "content_hash, meta) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        doc.doc_id,
+                        doc.name,
+                        doc.source_path,
+                        doc.pages,
+                        doc.parser,
+                        doc.content_hash(),
+                        json.dumps(
+                            doc.meta,
+                            ensure_ascii=False,
+                        ),
+                    ),
+                )
+
+                for chunk, embedding in zip(
+                    doc.chunks,
+                    chunk_embeddings,
+                ):
                     cur.execute(
-                        "INSERT INTO kb_chunk (doc_id, page_start, page_end,"
-                        " breadcrumb, text, embedding) VALUES (%s,%s,%s,%s,%s,%s)",
-                        (doc.doc_id, chunk.page_start, chunk.page_end,
-                         chunk.breadcrumb, chunk.text, emb.tolist()),
+                        "INSERT INTO kb_chunk "
+                        "(doc_id, page_start, page_end, "
+                        "breadcrumb, text, embedding) "
+                        "VALUES (%s,%s,%s,%s,%s,%s)",
+                        (
+                            doc.doc_id,
+                            chunk.page_start,
+                            chunk.page_end,
+                            chunk.breadcrumb,
+                            chunk.text,
+                            embedding.tolist(),
+                        ),
+                    )
+
+                if formula_replace_ready:
+                    formula_store.replace_for_doc(
+                        doc.doc_id,
+                        doc.formulas,
+                        cursor=cur,
                     )
 
     def update_assessment(self, doc: DocIR) -> bool:
-        """Refresh owned metadata, preserving chunks and unrelated metadata.
+        """Refresh metadata and validated formulas for unchanged content."""
 
-        Match the hash again so concurrent content changes cannot receive an
-        assessment computed for different content.
-        """
-        owned_keys = ("quality", "complexity", "complexity_details")
-        metadata = {key: doc.meta[key] for key in owned_keys if key in doc.meta}
+        owned_keys = (
+            "quality",
+            "complexity",
+            "complexity_details",
+            "formula_extraction",
+        )
+        metadata = {
+            key: doc.meta[key]
+            for key in owned_keys
+            if key in doc.meta
+        }
 
-        if not metadata:
+        formula_meta = doc.meta.get("formula_extraction")
+        formula_replace_ready = (
+            isinstance(formula_meta, dict)
+            and bool(formula_meta.get("replace_ready"))
+        )
+
+        if not metadata and not formula_replace_ready:
             return False
 
+        if formula_replace_ready:
+            from ..formula import store as formula_store
+            formula_store.ensure_schema()
+
         with get_conn(readonly=False) as conn, conn.cursor() as cur:
-            cur.execute(
-                "UPDATE kb_doc SET meta = meta || %s::jsonb"
-                " WHERE doc_id = %s AND content_hash = %s",
-                (
-                    json.dumps(metadata, ensure_ascii=False),
-                    doc.doc_id,
-                    doc.content_hash(),
-                ),
-            )
-            return cur.rowcount == 1
+            with conn.transaction():
+                cur.execute(
+                    "UPDATE kb_doc SET meta = meta || %s::jsonb"
+                    " WHERE doc_id = %s AND content_hash = %s",
+                    (
+                        json.dumps(
+                            metadata,
+                            ensure_ascii=False,
+                        ),
+                        doc.doc_id,
+                        doc.content_hash(),
+                    ),
+                )
+                updated = cur.rowcount == 1
+
+                if updated and formula_replace_ready:
+                    formula_store.replace_for_doc(
+                        doc.doc_id,
+                        doc.formulas,
+                        cursor=cur,
+                    )
+
+                return updated
 
     def doc_content_hash(self, doc_id: str) -> str | None:
         with get_conn() as conn, conn.cursor() as cur:

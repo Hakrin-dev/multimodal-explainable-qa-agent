@@ -1,6 +1,6 @@
 """Knowledge-base document content (structured source of truth).
 
-These three docs are the W1 seed corpus, deliberately tied to Chinook
+These four docs are the seed corpus, deliberately tied to Chinook
 entities (Employee names) so cross-source questions (W4) have ground to
 stand on:
   - 员工手册: numeric/条款 facts + the commission FORMULA (中级 #6 material)
@@ -12,6 +12,8 @@ ground truth. B owns this file from W2 on (扩到 10 份 + 3 份坏文档).
 """
 
 from __future__ import annotations
+
+from scripts.kb_doc_content_w5 import W5_DOCS
 
 EMPLOYEE_HANDBOOK = {
     "doc_id": "employee_handbook",
@@ -122,4 +124,5 @@ ALL_DOCS = [
     SALES_REVIEW,
     SERVICE_SOP,
     PRODUCT_OPERATIONS,
+    *W5_DOCS,
 ]

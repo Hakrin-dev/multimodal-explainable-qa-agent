@@ -11,7 +11,7 @@
 ```
 raw file ──► 质量评估(#9) ──► 复杂度评分(#8) ──► 解析路由 ──► DocIR.blocks
                                                                 │
-                              FormulaIR ◄── 公式登记(#6, W2) ◄───┤
+                              FormulaIR ◄── 公式自动抽取与登记(#6, W5) ◄───┤
                                                                 ▼
                           kb_chunk(pgvector+元数据) ◄── 层级切片(ChunkIR)
 ```
@@ -121,7 +121,7 @@ raw file ──► 质量评估(#9) ──► 复杂度评分(#8) ──► 解�
 |---|---|
 | DocIR | `kb_doc`（doc_id 主键，meta JSONB，content_hash 独立列用于判重） |
 | ChunkIR | `kb_chunk`（breadcrumb text[]，embedding vector(dim)） |
-| FormulaIR | W2 建 `kb_formula`  表（Schema 已冻结，直接照抄 FormulaIR 字段） |
+| FormulaIR | `kb_formula`（按 doc_id 原子替换；抽取失败或存在拒绝项时保留旧公式） |
 
 **维度陷阱**：`kb_chunk.embedding` 的 vector 维度绑定首次摄入的模型
 （当前 bge-small-zh=512；换 BGE-M3=1024 必须 drop + `--force` 重摄入——store 已内置
@@ -138,8 +138,9 @@ raw file ──► 质量评估(#9) ──► 复杂度评分(#8) ──► 解�
 | 复杂度评分 1-5 + 解析路由（#8 轻量） | ✅ 规则评分、路由选择与 MinerU 执行已接入 | `complexity.py`；`rag.pipeline.ingest_document` |
 | MinerU 4.x Basic 扫描件解析 | ✅ Middle JSON v2 → DocIR；PaddleOCR 兜底仍待接入 | `parsers/mineru.py`；`rag.pipeline.ingest_document` |
 | 目录信号融合 + LLM 层级判定（#7 完整版） | ⬜ 决赛 | `pdf_ingest` 扩展 |
-| 公式登记（#6） | ✅ W4-D1 seed（A 代建 kb_formula + 手工登记；LLM 自动抽取 ⬜ 决赛） | `scripts/seed_formulas.py` + `app/formula/store.py` |
-| 坏文档生成器（3 份，W2 演示用） | ✅ 三类资产完成；旋转扫描件已完成解析检索闭环，其余两类待增强 | `scripts/gen_bad_docs.py`；`tests/test_bad_docs.py` |
+| 公式登记（#6） | ✅ W5 自动化：候选块筛选 → LLM 抽取 → FormulaEngine 校验 → 与文档/切片同事务写入；默认关闭，失败不覆盖已有公式 | `ingestion/formula_extract.py`；`core/prompts/ingestion.py`；`formula/store.py`；`rag/store.py` |
+| 坏文档生成器与修复闭环（3 份） | ✅ 旋转、模糊繁体和缺失层级三类资产均已覆盖；原件与修复件隔离保存 | `scripts/gen_bad_docs.py`；`tests/test_bad_docs.py`；`tests/test_doc_api.py` |
+| 正常知识库语料 | ✅ W5 扩展到 10 份 PDF、116 个 ChunkIR；新增 6 例 Top-1 严格检索 6/6 | `scripts/kb_doc_content.py`；`scripts/kb_doc_content_w5.py`；`tests/test_kb_corpus.py` |
 
 ## 变更记录
 
@@ -147,6 +148,7 @@ raw file ──► 质量评估(#9) ──► 复杂度评分(#8) ──► 解�
 |---|---|---|
 | 0.1 | 2026-09-22 | A 代拟初稿（数据结构已随 RAG 最小闭环落地验证） |
 | **0.2** | **2026-09-26** | **冻结**：B 评审细化（字段约束/序列化边界/治理规则）合入；实现 `ingestion/ir.py` 与文档一致（标题识别 4/4 文档 100% 命中） | **✅ FROZEN（A/B 签字）** |
+| 0.3 | 2026-10-03 | W5 实现更新：在不改变冻结 IR Schema 的前提下接入 FormulaIR 自动抽取、双通道表达式校验及 `kb_formula` 原子替换；失败和部分拒绝均不覆盖已有公式 | ✅ 已实现 |
 | 0.2 | 2026-09-22 | B（sxy）完成实现对照评审；明确页码、level、bbox、breadcrumb 与 content_hash 语义；评审通过并冻结 |
 
 ## W2 B 增量：复杂度评分与解析路由（rules-v1）
@@ -201,9 +203,9 @@ cd backend
 ```
 
 测试在临时目录生成正常、表格、长文档、扫描、混合、旋转、重叠图片、空白、加密、损坏
-PDF，并验证现有四份知识库 PDF。真实 PG 测试使用唯一测试文档 ID，结束后仅清理该 ID。
-MinerU 4.x Basic 适配已完成；三类坏文档中旋转扫描件已完成解析检索闭环。
-模糊繁体增强、缺失层级恢复、扫描件视觉方向检测和 PaddleOCR 兜底仍待后续交付。
+PDF，并验证当前十份正常知识库 PDF。真实 PG 测试使用唯一测试文档 ID，结束后仅清理该 ID。
+MinerU 4.x Basic 与 Standard GPU 路径均已完成适配；旋转扫描、模糊繁体和缺失层级三类坏文档均已完成修复、解析与切片闭环。
+PaddleOCR CPU 兜底与 MinerU 容器内服务化仍待后续交付。
 
 增量登记（2026-09-23，B 实现并完成回归验证）：新增可选 `meta.complexity_details`，
 实现已有 `meta.complexity`；所有冻结字段与语义保持不变。

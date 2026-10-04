@@ -49,6 +49,14 @@ def main() -> None:
     )
     parser.add_argument("--top-k", type=int, default=6)
     parser.add_argument(
+        "--require-retrieval-gate",
+        action="store_true",
+        help=(
+            "exit non-zero unless every case passes the "
+            "strict retrieval gate"
+        ),
+    )
+    parser.add_argument(
         "--only-ids",
         default="",
         help="comma-separated case id filter",
@@ -95,11 +103,50 @@ def main() -> None:
         )
         final_answer_norm = _norm(result.answer)
         facts = case["expected_facts"]
+        expected_doc_id = case.get(
+            "expected_doc_id"
+        )
+        retrieved_doc_ids = [
+            citation.get("doc_id")
+            for citation in result.citations
+        ]
 
         retrieval_hit = all(
             _norm(fact) in retrieved_text
             for fact in facts
         )
+
+        if expected_doc_id:
+            document_hit = bool(
+                retrieved_doc_ids
+                and retrieved_doc_ids[0]
+                == expected_doc_id
+            )
+            target_text = _norm(
+                "".join(
+                    hit.get("text", "")
+                    for hit, citation in zip(
+                        result.hits,
+                        result.citations,
+                    )
+                    if citation.get("doc_id")
+                    == expected_doc_id
+                )
+            )
+            target_fact_hit = all(
+                _norm(fact) in target_text
+                for fact in facts
+            )
+        else:
+            document_hit = True
+            target_fact_hit = retrieval_hit
+
+        retrieval_gate = (
+            retrieval_hit
+            and document_hit
+            and target_fact_hit
+        )
+
         answer_hit = all(
             _norm(fact) in final_answer_norm
             for fact in facts
@@ -134,7 +181,12 @@ def main() -> None:
             "id": case["id"],
             "question": case["question"],
             "expected_facts": facts,
+            "expected_doc_id": expected_doc_id,
+            "retrieved_doc_ids": retrieved_doc_ids,
+            "document_hit": document_hit,
+            "target_fact_hit": target_fact_hit,
             "retrieval_hit": retrieval_hit,
+            "retrieval_gate": retrieval_gate,
             "answer_hit": answer_hit,
             "status": result.status,
             "latency_ms": result.latency_ms,
@@ -212,11 +264,20 @@ def main() -> None:
         sum(row["answer_hit"] for row in results)
         / count
     )
+    retrieval_gate_accuracy = (
+        sum(
+            row["retrieval_gate"]
+            for row in results
+        )
+        / count
+    )
 
     print(
         f"\nretrieval hit@{args.top_k}: "
         f"{retrieval_accuracy:.0%}   "
-        f"answer hit: {answer_accuracy:.0%}"
+        f"answer hit: {answer_accuracy:.0%}   "
+        f"strict gate: "
+        f"{retrieval_gate_accuracy:.0%}"
     )
 
     if settings.llm_provider == "mock":
@@ -280,6 +341,9 @@ def main() -> None:
         "top_k": args.top_k,
         "case_count": count,
         "retrieval_hit": retrieval_accuracy,
+        "retrieval_gate": (
+            retrieval_gate_accuracy
+        ),
         "answer_hit": answer_accuracy,
         "faithful_count": faithful_count,
         "rewritten_count": rewritten_count,
@@ -300,6 +364,14 @@ def main() -> None:
         "report:",
         output.relative_to(BACKEND.parent),
     )
+
+    if (
+        args.require_retrieval_gate
+        and retrieval_gate_accuracy < 1.0
+    ):
+        raise SystemExit(
+            "strict retrieval gate failed"
+        )
 
 
 if __name__ == "__main__":

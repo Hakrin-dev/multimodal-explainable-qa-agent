@@ -24,11 +24,25 @@ def test_rag_doc_filter_is_a_safe_document_id():
 
 
 def test_trace_listing_query_constraints_are_bounded():
-    route = next(r for r in main.app.routes if getattr(r, "path", None) == "/api/trace")
-    params = {p.name: p for p in route.dependant.query_params}
-    assert params["limit"].field_info.ge == 1
-    assert params["limit"].field_info.le == 100
-    assert params["session_id"].field_info.max_length == 128
+    """Test the public HTTP contract, not Pydantic internals."""
+    from fastapi.testclient import TestClient
+
+    client = TestClient(main.app)
+    invalid_queries = [
+        {"limit": 0},
+        {"limit": -1},
+        {"limit": 101},
+        {"session_id": "x" * 129},
+        {"session_id": "../../etc/passwd"},
+    ]
+
+    for params in invalid_queries:
+        response = client.get("/api/trace", params=params)
+        assert response.status_code == 422, (
+            params,
+            response.status_code,
+            response.text,
+        )
 
 
 def test_repair_gate_returns_429_when_busy():
