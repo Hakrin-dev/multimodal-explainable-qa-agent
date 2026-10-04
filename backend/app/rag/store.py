@@ -69,6 +69,22 @@ def _parse_vector(val) -> np.ndarray | None:
                     dtype=np.float32)
 
 
+def formula_replace_ready(doc: DocIR) -> bool:
+    """Guard kb_formula replacement against nondeterministic empty extraction.
+
+    An LLM pass succeeding with zero formulas despite non-zero candidate
+    blocks is treated as extraction noise: existing rows are kept instead of
+    wiped. Zero candidates is the deterministic local decision that the
+    document carries no formula-bearing blocks, so clearing stays correct.
+    """
+    summary = doc.meta.get("formula_extraction")
+    if not (isinstance(summary, dict) and summary.get("replace_ready")):
+        return False
+    if doc.formulas:
+        return True
+    return int(summary.get("candidates") or 0) == 0
+
+
 class KBStore:
     def __init__(self, dim: int):
         self.dim = dim
@@ -108,13 +124,9 @@ class KBStore:
             f"{len(chunk_embeddings)} embeddings"
         )
 
-        formula_meta = doc.meta.get("formula_extraction")
-        formula_replace_ready = (
-            isinstance(formula_meta, dict)
-            and bool(formula_meta.get("replace_ready"))
-        )
+        replace_formulas = formula_replace_ready(doc)
 
-        if formula_replace_ready:
+        if replace_formulas:
             from ..formula import store as formula_store
             formula_store.ensure_schema()
 
@@ -162,7 +174,7 @@ class KBStore:
                         ),
                     )
 
-                if formula_replace_ready:
+                if replace_formulas:
                     formula_store.replace_for_doc(
                         doc.doc_id,
                         doc.formulas,
@@ -184,16 +196,12 @@ class KBStore:
             if key in doc.meta
         }
 
-        formula_meta = doc.meta.get("formula_extraction")
-        formula_replace_ready = (
-            isinstance(formula_meta, dict)
-            and bool(formula_meta.get("replace_ready"))
-        )
+        replace_formulas = formula_replace_ready(doc)
 
-        if not metadata and not formula_replace_ready:
+        if not metadata and not replace_formulas:
             return False
 
-        if formula_replace_ready:
+        if replace_formulas:
             from ..formula import store as formula_store
             formula_store.ensure_schema()
 
@@ -213,7 +221,7 @@ class KBStore:
                 )
                 updated = cur.rowcount == 1
 
-                if updated and formula_replace_ready:
+                if updated and replace_formulas:
                     formula_store.replace_for_doc(
                         doc.doc_id,
                         doc.formulas,

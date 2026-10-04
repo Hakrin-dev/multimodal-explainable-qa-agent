@@ -27,10 +27,20 @@ class ValidationResult:
 
 
 class SQLValidator:
-    def __init__(self, schema: dict[str, dict[str, str]], max_rows: int = 50):
-        """schema: {table: {column: type}} from schema_meta.load_table_meta()."""
+    def __init__(self, schema: dict[str, dict[str, str]], max_rows: int = 50,
+                 allowed_tables: set[str] | None = None):
+        """schema: {table: {column: type}} from schema_meta.load_table_meta().
+
+        allowed_tables: when Schema Linking compressed the prompt, restrict the
+        SQL to the linked selection — otherwise the model can silently escape
+        the compressed context with an out-of-scope table (W4 acceptance:
+        robust-023 queried track while only playlist was in context, passed
+        validation against the full schema, and returned a wrong answer).
+        """
         self.schema = {t.lower(): {c.lower(): v for c, v in cols.items()}
                        for t, cols in schema.items()}
+        self.allowed_tables = ({t.lower() for t in allowed_tables}
+                               if allowed_tables is not None else None)
         self.max_rows = max_rows
 
     # -- public --
@@ -62,8 +72,14 @@ class SQLValidator:
         cte_names = {cte.alias_or_name.lower() for cte in root.find_all(exp.CTE)}
         for table in root.find_all(exp.Table):
             name = table.name.lower()
-            if name and name not in self.schema and name not in cte_names:
+            if not name or name in cte_names:
+                continue
+            if name not in self.schema:
                 errors.append(f"未知的表: {name}")
+            elif self.allowed_tables is not None and name not in self.allowed_tables:
+                errors.append(
+                    f"表 {name} 不在本次 Schema Linking 选择范围内"
+                    f"（可用表：{', '.join(sorted(self.allowed_tables))}）")
 
         # dangerous functions (known classes + anonymous calls)
         for func in root.find_all(exp.Func):

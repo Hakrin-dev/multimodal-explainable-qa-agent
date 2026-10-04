@@ -110,6 +110,7 @@ class NL2SQLPipeline:
                          detail={"rewrites": rw.rewrites} if rw.rewrites else {})
 
         # ② schema context: W3 #4 compression via Schema Linking (ablation-capable)
+        linked_tables: set[str] | None = None
         with trace.span("schema_context", NodeType.STEP, parent=_p(), input=None) as node:
             tables = schema_meta.load_table_meta()
             if self.settings.schema_linking:
@@ -135,6 +136,7 @@ class NL2SQLPipeline:
                     schema_ctx += ("\n\n【Join 路径（只允许使用这些关联）】\n"
                                    + "\n".join(linking.join_paths))
                 full_ctx = schema_meta.build_schema_context(tables, with_samples=True)
+                linked_tables = set(linking.selected)
                 trace.finish(node, output=f"{len(linking.selected)}/{len(tables)} tables",
                              detail={
                                  "selected_tables": linking.selected,
@@ -166,8 +168,11 @@ class NL2SQLPipeline:
                 result.latency_ms = int((time.monotonic() - t0) * 1000)
                 return result
 
-            vres = self._validate(trace, last_sql, SQLValidator(schema_dict, self.max_rows),
-                                  parent=_p())
+            vres = self._validate(
+                trace, last_sql,
+                SQLValidator(schema_dict, self.max_rows,
+                             allowed_tables=linked_tables),
+                parent=_p())
 
             # TOP-N heuristic (mt-002 lesson): question demands 前N but SQL lacks
             # LIMIT — not a syntax error, only detectable against the question text

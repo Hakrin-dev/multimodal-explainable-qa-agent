@@ -10,6 +10,7 @@ from pathlib import Path
 BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND))
 from app.agent.kernel import AgentKernel  # noqa: E402
+from app.agent.slots import SlotMatrix  # noqa: E402
 from app.core.config import get_settings, var_dir  # noqa: E402
 
 
@@ -22,6 +23,18 @@ def main() -> None:
     cases = [json.loads(line) for line in Path(args.cases).read_text(encoding="utf-8").splitlines()
              if line.strip() and (not only or json.loads(line)["id"] in only)]
     kernel = AgentKernel()
+    families = SlotMatrix.load().equivalents()
+
+    def _equivalent(expected: str, missing: list[str]) -> bool:
+        """Semantic slot matching: expected canonical passes if any synonym of
+        it (per matrix vocabulary) appears in the actual missing slots."""
+        if expected in missing:
+            return True
+        for fam in families:
+            if expected in fam and any(m in fam for m in missing):
+                return True
+        return False
+
     results = []
     for case in cases:
         r = kernel.run(case["question"], session_id=f"clarify-{case['id']}")
@@ -29,7 +42,8 @@ def main() -> None:
         ok = r.status == case.get("expected_status", "clarify")
         if case.get("expected_intent"):
             ok = ok and r.intent == case["expected_intent"]
-        ok = ok and all(slot in missing for slot in case.get("expected_missing_contains", []))
+        ok = ok and all(_equivalent(slot, missing)
+                        for slot in case.get("expected_missing_contains", []))
         results.append({"id": case["id"], "passed": ok, "status": r.status,
                         "intent": r.intent, "missing_slots": missing})
         print(f"  {'✓' if ok else '✗'} {case['id']} [{r.status}/{r.intent}] missing={missing}")

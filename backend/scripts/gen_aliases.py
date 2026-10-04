@@ -33,7 +33,10 @@ ALIAS_SYSTEM = """\
 要求：
 1. 只输出 JSON：{"aliases": ["别名1", "别名2"]}，不要输出其他内容。
 2. 3~6 个，每个 2~6 字；不要与已有别名重复；不要生僻或易歧义的表达。
-3. 贴近原词的常见错拼最多 1 个（如"爵士"→"爵士乐"这类不算错拼，直接作为别名）。"""
+3. 贴近原词的常见错拼最多 1 个（如"爵士"→"爵士乐"这类不算错拼，直接作为别名）。
+4. **严禁品类词/字段名式表述**（如「歌单名」「歌单名称」「曲目名」「电影名」「音乐名」）——
+   别名必须指代该具体实体本身（如 Music 歌单可给「音乐歌单」「Music 播放列表」），
+   品类词会污染改写（"歌单名字里带Music"会被误替换成"Music字里带Music"）。"""
 
 DEFAULT_FILE = "data/db_schema/alias_candidates.jsonl"
 
@@ -86,6 +89,9 @@ COMMON_WORD_BLOCKLIST = {
 # 2) 混合脚本噪音（如 “摇gun”）与纯拉丁单字母缩写由正则拦截
 import re as _re
 _MIXED_SCRIPT = _re.compile(r"^[\u4e00-\u9fff]+[a-zA-Z]+[\u4e00-\u9fff]*$|^[a-zA-Z]+[\u4e00-\u9fff]+$")
+# 品类词式别名（X名/X名称/X表）指代范畴而非实体，作精确别名会灾难性误改写（W4 验收发现）
+_CATEGORY_WORD = _re.compile(
+    r"^(歌单|曲目|歌曲|音乐|专辑|艺术家|员工|客户|订单|发票|电影|视频|格式|曲风)(名|名称|表|列表)?$")
 
 def review_prune(candidates: dict[str, list[str]], canonicals: set[str]) -> dict[str, list[str]]:
     """Apply blocklist + resolve cross-canonical ambiguity (base-term rule):
@@ -110,7 +116,8 @@ def review_prune(candidates: dict[str, list[str]], canonicals: set[str]) -> dict
     out = {}
     for canon, aliases in resolved.items():
         out[canon] = [a for a in aliases
-                      if a not in COMMON_WORD_BLOCKLIST and not _MIXED_SCRIPT.match(a)]
+                      if a not in COMMON_WORD_BLOCKLIST and not _MIXED_SCRIPT.match(a)
+                      and not _CATEGORY_WORD.match(a)]
     return out
 
 def main() -> None:

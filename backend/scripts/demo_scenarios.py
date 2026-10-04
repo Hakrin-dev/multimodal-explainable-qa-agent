@@ -116,7 +116,39 @@ def main() -> None:
         return "完整 6 轮脚本由 eval/run_multiturn.py 验证（mts-004 已通过）"
     check(8, "多轮对话（指代消解）", s8)
 
-    rows.append(("9. 文档管理台（坏文档修复）", "○ W4", "B 摄入流水线 v1（质量检测器）+ C 管理台"))
+    # 9 文档管理台：坏文档上传→质量报告→修复→修复效果对比（API 链路；
+    #    前端 DocumentConsole.vue 已连接同一组端点）
+    def s9():
+        import urllib.request as ur
+        import uuid
+        fixture = BACKEND.parent / "data/docs_bad/bad_blurred_traditional.pdf"
+        assert fixture.exists(), "fixture missing"
+        boundary = uuid.uuid4().hex
+        body = (
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; "
+            f"filename=\"{fixture.name}\"\r\nContent-Type: application/pdf\r\n\r\n"
+        ).encode() + fixture.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
+        req = ur.Request(base + "/api/docs/upload", data=body, headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}"})
+        with ur.urlopen(req, timeout=120) as resp:
+            up = json.load(resp)
+        doc_id = up["doc_id"]
+        q0 = up.get("quality") or {}
+        assert q0.get("warnings"), f"quality warnings expected: {q0}"
+        req = ur.Request(base + f"/api/docs/{doc_id}/repair",
+                         data=json.dumps({"correct_orientation": True,
+                                          "enhance_clarity": True, "run_ocr": True,
+                                          "normalize_traditional": True}).encode(),
+                         headers={"Content-Type": "application/json"})
+        with ur.urlopen(req, timeout=300) as resp:
+            rep = json.load(resp)
+        assert rep.get("state") == "repaired", rep.get("state")
+        q1 = _get(base, f"/api/docs/{doc_id}/quality")
+        before = (q1.get("original", {}).get("quality") or {}).get("clarity")
+        after = (q1.get("repaired", {}).get("quality") or {}).get("clarity")
+        assert before is not None and after is not None and after > before, f"{before}->{after}"
+        return f"质量 {before:.3f}→{after:.3f}（{after/before:.0f}x）| 警告 {len(q0['warnings'])} 项"
+    check(9, "文档管理台（坏文档修复链路）", s9)
 
     # 10 推理链路回放
     def s10():

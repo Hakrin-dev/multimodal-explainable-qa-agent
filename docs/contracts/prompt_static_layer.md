@@ -92,6 +92,8 @@ B 的 `rag.query_rewrite`、`rag.factcheck` 与 `rag.ingest` 均已于 W5 注册
 | 0.1 | 2026-09-22 | A 起草：nl2sql 两模板上线文本 + intent 候选 + 冻结纪律 |
 | **1.0** | **2026-09-28** | **冻结**：六家族注册表定稿（nl2sql×2 / agent×3 / rag×1）；文本零改动（保缓存）；新家族注册协议入档 | **✅ FROZEN** |
 | 1.1 | 2026-09-29 | `agent.plan` schema 演进（子任务 DAG：id / depends_on / {tN.result} 占位符）——**冻结规则的登记例外**：功能必需的 schema 变更而非措辞优化；PROMPT_TEMPLATE_VERSION bump 至 v0.4-w2-d3（全量缓存失效为刻意行为）；其余六家族文本未动 | ✅ 变更已登记 |
+| 1.4 | 2026-10-04 | W4 验收：`agent.rewrite` 追加规则 4（多同类要素取最近轮次）——追加式变更；v0.5 同批 | ✅ 已登记 |
+| 1.3 | 2026-10-04 | W4 验收：`agent.intent` 追加规则 5（防过度澄清：统计对象/口径已明确时必须判 DB_QUERY，历史已补全要素不重复追问）——冻结规则追加式变更（不改已有文本），PROMPT_TEMPLATE_VERSION → v0.5-w4-accept | ✅ 已登记 |
 | 1.2 | 2026-09-24 | W3：① 新家族 `nl2sql.link_rerank` 注册（#8，静态层首合即冻结）；② **负结果记录**：曾试验向 `nl2sql.generate` 追加"计数用 COUNT(*)/主键"规则（Rule 7/8 实验）——与 track 表业务注释（W1 name-dedup 约定：曲目数量按曲名去重）直接冲突，导致 st-004/mt-008 回归失败，**已完整回退**，静态层文本保持 v1.0 零改动，PROMPT_TEMPLATE_VERSION 维持 v0.4-w2-d3；③ 顺手修正 eval 数据 bug：mt-021 参考SQL `COUNT(*)` → `COUNT(DISTINCT t.name)`（对齐 W1 约定，见 cases notes） | ✅ 已登记 |
 | 1.3 | 2026-10-02 | W5：新增并冻结 `rag.factcheck` 家族；逐句核验答案与引用片段的支撑关系，发现无依据陈述时最多两轮收敛重写；JSON 解析或 LLM 调用失败时保留当前答案并标记 degraded；不修改已有 Prompt 家族文本，因此不使已有家族缓存失效 | ✅ 已登记 |
 | 1.4 | 2026-10-03 | W5：新增并冻结 `rag.ingest` 家族；摄入期从候选原文块抽取 FormulaIR，并执行表达式、参数和来源校验；不修改已有 Prompt 家族文本 | ✅ 已登记 |
