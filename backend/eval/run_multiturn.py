@@ -65,8 +65,12 @@ def main() -> None:
     only = {x.strip() for x in args.only_ids.split(",") if x.strip()}
     scripts = []
     for case_path in args.cases:
-        scripts.extend(json.loads(l) for l in Path(case_path).read_text(encoding="utf-8").splitlines()
-                       if l.strip() and (not only or json.loads(l)["id"] in only))
+        for line in Path(case_path).read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            case = json.loads(line)
+            if not only or case["id"] in only:
+                scripts.append(case)
     print(f"provider={s.llm_provider} model={s.active_model} scripts={len(scripts)}\n")
 
     kernel = AgentKernel()
@@ -104,6 +108,8 @@ def main() -> None:
         "results": results,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"report: {out.relative_to(BACKEND.parent)}")
+    # Accuracy is a metric; only an empty selection is a runner/config error.
+    raise SystemExit(0 if n else 2)
 
 
 if __name__ == "__main__":

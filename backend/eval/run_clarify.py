@@ -41,7 +41,9 @@ def main() -> None:
     out.write_text(json.dumps({"provider": get_settings().llm_provider,
                                "passed": passed, "total": n, "results": results},
                               ensure_ascii=False, indent=2), encoding="utf-8")
-    raise SystemExit(0 if n and passed == n else 1)
+    # Accuracy shortfalls are evaluation results, not runner/infrastructure failures.
+    # Keep the process successful so family-level retry logic does not rerun valid cases.
+    raise SystemExit(0 if n else 2)
 
 
 if __name__ == "__main__":

@@ -142,7 +142,7 @@ function handleKeydown(event: KeyboardEvent) {
             <n-tag round size="small" :type="backendOnline === true ? 'success' : backendOnline === false ? 'error' : 'default'">
               <span class="status-dot" />{{ backendOnline === true ? '服务在线' : backendOnline === false ? '服务离线' : '检测中' }}
             </n-tag>
-            <n-button quaternary size="small" @click="showDocuments = !showDocuments">▣ 文档管理</n+            </n-button>
+            <n-button quaternary size="small" @click="showDocuments = !showDocuments">▣ 文档管理</n-button>
             <n-button quaternary size="small" @click="newSession">＋ 新会话</n-button>
           </div>
         </header>

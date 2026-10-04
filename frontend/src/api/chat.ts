@@ -61,8 +61,6 @@ export async function streamChat(
       markFirstEvent()
       onEvent(tail)
     }
-  } catch (error) {
-    throw error
   } finally {
     clearTimeout(firstEventTimeout)
     signal?.removeEventListener('abort', forwardAbort)
