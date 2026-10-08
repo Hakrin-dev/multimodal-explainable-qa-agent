@@ -104,9 +104,31 @@ class AgentKernel:
                                  "missing_slots": ir.missing_slots})
         emit("trace.node", _node_event(trace, node))
 
+        # ①'' standalone confirmation (W5 遗留项：多轮简短输入的过度澄清):
+        # the rewrite produced a standalone question but intent still said
+        # ambiguous — re-classify once WITHOUT history (context is already
+        # folded into the rewrite; history is the distraction source).
+        verdict_pre = self.slots.check(effective_question)
+        if (ir.needs_clarification and rw.changed and not verdict_pre.missing):
+            retry = self.classifier.classify(effective_question, None)
+            if not retry.needs_clarification:
+                ir = retry
+                with trace.span("intent_standalone_retry", NodeType.STEP,
+                                input=effective_question) as rnode:
+                    trace.finish(rnode, output={"intent": retry.intent},
+                                 detail={"reason": "standalone confirmation"})
+                emit("trace.node", _node_event(trace, rnode))
+
         # ①' slot matrix (§4.7, deterministic): pattern rules may override an
-        # over-confident DB_QUERY into clarify, or enrich clarify options
+        # over-confident DB_QUERY into clarify, or enrich clarify options.
+        # The matrix owns the CANONICAL slot vocabulary: free-form LLM labels
+        # (时间范围/对比基准/统计粒度…) are normalized onto rule slot names so
+        # clarify payloads are stable (W4 clarify-eval 0/30 root cause).
         verdict = self.slots.check(effective_question)
+        if verdict.triggered:
+            if ir.missing_slots:
+                ir.missing_slots = self._canonicalize_missing(ir.missing_slots, verdict)
+                ir.options = self._canonicalize_options(ir.options, verdict)
         if verdict.triggered and verdict.missing:
             if ir.intent in ("DB_QUERY", "HYBRID") and not ir.needs_clarification:
                 ir = IntentResult(intent="AMBIGUOUS", confidence=0.9,
@@ -351,6 +373,31 @@ class AgentKernel:
 
     # clarify payload hand-off (run() applies it to the session after _clarify)
     _pending_store: dict | None = None
+
+    @staticmethod
+    def _canonicalize_missing(missing: list[str], verdict) -> list[str]:
+        rule = verdict.rule
+        out: list[str] = []
+        for label in missing:
+            canon = rule.canonicalize(label) if rule is not None else None
+            key = canon or label
+            if key not in out:
+                out.append(key)
+        return out
+
+    @staticmethod
+    def _canonicalize_options(options: dict, verdict) -> dict:
+        rule = verdict.rule
+        if rule is None:
+            return options
+        merged: dict[str, list] = {}
+        for key, vals in (options or {}).items():
+            canon = rule.canonicalize(key) or key
+            bucket = merged.setdefault(canon, [])
+            for v in vals or []:
+                if v not in bucket:
+                    bucket.append(v)
+        return merged
 
 
 # ----------------------------------------------------------------- helpers --

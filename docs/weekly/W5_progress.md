@@ -217,3 +217,46 @@ test_connection 返回非 None 的提示。历史 B-D1/B-D2/B-D3 测试数字保
 - 空 HyDE 回退为 retrieval_query 的 Dense embedding；
 - `.env`、密钥、模型、报告和数据库产物不进入变更；尚未 commit 或 push。
 >>>>>>> 0067260aed4bc2ae7b6d3bf8bfbfefacd1dce572
+
+## A：W4 验收复审与 W5 收口（2026-10-04）
+
+### B/C W5 交付复验（全部实测通过）
+
+| 项 | 复验方式 | 结果 |
+|---|---|---|
+| C 安全检查 | `test_api_security.py` + HTTP 抽查 | ✅ 69 专项测试过；非法/超长 session_id → 422；Trace limit 1–100；修复并发 429 |
+| C 前端兼容 | `pnpm test` | ✅ 9/9（SSE 4 + 文档 API 5）；`vue-tsc` 通过 |
+| B-D1 忠实度自检 | 真实 deepseek 门禁 | ✅ Trace 含 `rag_factcheck`，faithful=True；前置 `rag_query_rewrite` 协同工作 |
+| B-D2 公式自动抽取 | `extract_formulas` 真实 LLM | ✅ 候选 6 → 抽取 1（销售提成 latex 正确）、rejected=[]、meta 落盘 |
+| B-D3 知识库 10 份 | 库内核对 | ✅ 10 docs / 116 chunks（幂等：旧 4 份跳过） |
+| B-D4 查询改写 + HyDE | 真实 deepseek 门禁 | ✅ retrieval_query="年假有几天？年假 天数 规定"；HyDE 仅影响 Dense（契约已注明） |
+
+### A 侧 W5 任务
+
+1. **遗留项解决**（多轮策略张力）：
+   - 内核 `intent_standalone_retry`：改写已自包含 + 矩阵无缺槽时，去历史重判一次
+   - `agent.rewrite` 规则 4 收紧（只取最近要素、严禁合并）——契约 v1.5 登记
+   - 效果：W3 多轮脚本 8/12 → **10/12 脚本、48/54 → 51/54 轮**
+2. **L2 全量回归完成**（manifest `levels_l2_20261004_180658.json`，**30 runs、0 基础设施失败**）：
+
+| Family | DeepSeek（×3 重复零方差） | Qwen（×3 零方差） |
+|---|---|---|
+| NL2SQL 61 例 | **61/61 = 100%**（首过 100%） | 51/61 = 83.6% |
+| RAG（answer_hit） | **100%**（retrieval 100%） | 93%（retrieval 100%） |
+| 多轮（去重后 8 脚本） | **8/8 脚本 · 34/34 轮** | 6/8 · 31/34 |
+| 跨源多跳 11 例 | **11/11 = 100%** | 9/11 = 81.8%（路由全 100%，生成侧滞后） |
+| 澄清 30 例 | **30/30 = 100%** | 7~8/30 |
+
+  主备复现模式一致：**路由层与模型无关、生成质量与模型强相关**——DeepSeek 主力定案再确认。
+3. **效率实测矩阵完成**（`docs/milestones/w5_efficiency/report.md` + 2 图 + JSON）：
+   - 检索：10/100/1000 篇 → P50 7.4/7.2/**133.0** ms，标记召回 3/3（瓶颈 = 内存 BM25，升级路径 pgvector HNSW/外部索引已注明）
+   - 表规模：11 → 71 表，Linking P50 55.2 → **160.4** ms，目标表召回 3/3
+4. 用例卫生：多轮用例去重（12→8 唯一脚本，旧 mts-007 副本是 L2 多轮失败的真身）；
+   `kb_formula` 补入项目表排除清单（曾泄漏进 Schema Linking）；README 结构段刷新
+
+### A 补充：用例卫生与终验
+
+- 发现 `multiturn_scripts.jsonl`（旧）与 `_w3.jsonl`（修订）重复 mts-005~008（12 脚本实为 8 场景，
+  L2 "10/12" 中的失败恰为同一 mts-007 的两个副本）→ 旧文件去重，唯一脚本集 = mts-001~008
+- 内核重试门槛精化（矩阵"已触发但零缺槽"同样触发去历史重判）→ **mts-007 5/5**
+- 最终多轮终验（去重后）：旧 4 脚本 4/4 · w3 4 脚本 4/4 · 合计 **8/8 脚本 34/34 轮**（deepseek）

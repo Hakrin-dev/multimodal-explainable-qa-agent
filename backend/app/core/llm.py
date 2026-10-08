@@ -37,7 +37,7 @@ Role = Literal["system", "user", "assistant"]
 # Bump when prompt templates change -> invalidates stale cache entries.
 # v0.4-w2-d3: agent.plan schema evolution (task DAG: id/depends_on/placeholders)
 # — registered exception to the text freeze, see prompt_static_layer.md changelog.
-PROMPT_TEMPLATE_VERSION = "v0.4-w2-d3"
+PROMPT_TEMPLATE_VERSION = "v0.5-w4-accept"
 
 
 # ---------------------------------------------------------------------------

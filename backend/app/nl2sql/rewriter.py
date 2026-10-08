@@ -23,7 +23,7 @@ from ..db.session import get_conn
 _EDIT_MAX_DIST = {2: 1, 3: 1}   # length → levenshtein budget (longer: 2)
 _EDIT_DEFAULT_DIST = 2
 _EDIT_MIN_RATIO = 0.5
-_VEC_MIN_SIM = 0.75
+_VEC_MIN_SIM = 0.8   # W4 验收提高到 0.8（0.75 对短片段过松）
 _MAX_FUZZY_REWRITES = 3
 _SPAN_MAX_LEN = 8
 
@@ -55,6 +55,11 @@ def load_terms() -> list[dict]:
 def rewrite(question: str, terms: list[dict] | None = None) -> RewriteResult:
     """Exact alias matching (W1). When `terms` is None (DB mode) the W3 fuzzy
     stages (edit distance + pgvector) run afterwards, config-gated."""
+    # DB mode = fuzzy stages enabled (explicit term injection keeps pure behavior).
+    # NOTE: capture BEFORE reassignment — `terms is None` after load_terms() was
+    # dead code (W4 acceptance: edit-distance/vector stages never ran in prod,
+    # Muzic→Music never corrected).
+    db_mode = terms is None
     terms = terms if terms is not None else load_terms()
     if not terms:
         return RewriteResult(question=question)
@@ -100,7 +105,7 @@ def rewrite(question: str, terms: list[dict] | None = None) -> RewriteResult:
             break
 
     # W3 fuzzy stages (DB mode only — injected terms keep pure behavior)
-    if terms is None:
+    if db_mode:
         result, applied, consumed = _fuzzy_stages(
             result, applied, consumed,
             [(a, c, b) for a, c, b in units])
@@ -134,7 +139,7 @@ def _fuzzy_stages(result: str, applied: list[dict],
                 continue
             hit = _edit_match(span, units)
             method = "edit"
-            if hit is None:
+            if hit is None and _fuzzy_span_ok(span):
                 hit = _vector_match(span)
                 method = "vector"
             if hit is not None:
@@ -151,6 +156,12 @@ def _fuzzy_stages(result: str, applied: list[dict],
                         "binding": binding, "method": method, "score": round(score, 3),
                         "matched_alias": alias_matched})
     return result, applied, consumed
+
+
+def _fuzzy_span_ok(span: str) -> bool:
+    """Vector-stage span guard: fragments shorter than 3 CJK / 4 latin chars
+    are too ambiguous for semantic matching (W4 acceptance)."""
+    return len(span) >= 4 if span.isascii() else len(span) >= 3
 
 
 _SPAN_STOP = set("什么 怎么 怎样 哪些 哪个 多少 请 给 和 与 的 了 是 在 有 按 从 中 "
@@ -186,19 +197,27 @@ def _edit_match(span: str, units: list[tuple[str, str, str]]):
     import jieba
     if jieba.dt.FREQ.get(span):  # real word — not a typo candidate
         return None
-    budget = _EDIT_MAX_DIST.get(len(span), _EDIT_DEFAULT_DIST)
+    s_l = span.lower()
+    span_is_latin = s_l.isascii()
     best = None
     for alias, canonical, binding in units:
         a = alias.lower()
-        s = span.lower()
-        if a == s:
-            continue
+        s = s_l
+        if a == s or a.isascii() != span_is_latin:
+            continue                      # script mismatch — never bridge
         dist = _levenshtein(s, a)
-        if dist > budget:
-            continue
         ratio = difflib.SequenceMatcher(None, s, a).ratio()
-        if ratio < _EDIT_MIN_RATIO:
-            continue
+        # Script-aware budgets (W4 acceptance false positives: Jane→Jazz dist2/ratio.5,
+        # AC→AAC len2 — latin needs dist==1 & len>=4 & ratio>=0.7; CJK >=3 needs
+        # dist<=1; 2-char CJK typos need dist==1, real words filtered by FREQ above).
+        if span_is_latin:
+            if len(s) < 4 or dist != 1 or ratio < 0.7 or abs(len(s) - len(a)) > 1:
+                continue
+        else:
+            # CJK 模糊仅限等长 ≥3 字：2 字 dist-1 噪声极大（歌有→歌剧、
+            # 曲目的→曲目 类片段污染，W4 验收两次灾难假阳性的根治）
+            if len(s) < 3 or len(s) != len(a) or dist != 1:
+                continue
         if best is None or dist < best[3]:
             best = (canonical, binding, alias, dist)
     if best is None:

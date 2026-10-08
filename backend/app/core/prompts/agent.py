@@ -22,6 +22,7 @@ INTENT_STATIC = """\
 2. 一个问题里包含多个子任务且数据形态不同 → HYBRID。
 3. 关键要素（实体、时间范围、比较对象、数量 N）缺失且无法从对话历史推断 → AMBIGUOUS。
 4. 拿不准时宁可选 AMBIGUOUS，不要猜测。
+5. 但也不要过度澄清：若输入（含改写后）已明确统计对象与口径（如"一共有多少位客户"），必须判为 DB_QUERY；历史上下文已补全的要素不重复追问。
 
 输出格式（严格 JSON，不要输出其他内容）：
 {"intent": "CHAT|DB_QUERY|DOC_QUERY|HYBRID|AMBIGUOUS",
